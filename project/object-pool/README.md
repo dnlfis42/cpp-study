@@ -20,6 +20,7 @@
 | [v01](v01/) | `vector<T>` + `vector<size_t>` 스택 free list, Raw API                   | 베이스라인                                                                          |
 | [v02](v02/) | RAII Handle (`unique_ptr<T, Deleter>`) + `acquire_unique()` 추가         | release 누락 구조적 차단. Handle 오버헤드 ~0.5ns (사실상 공짜)                      |
 | [v03](v03/) | free list를 **인덱스 링크드 리스트**로 (`Node { T data; size_t next; }`) | 구조적 순수성, cache locality 이득. 단, sizeof(Node) 증가로 hot path 느려질 수 있음 |
+| [v04](v04/) | Raw API를 private로 — **Handle 전용 공개**. `acquire()`가 Handle 반환    | 타입 시스템으로 release 누락/cross-pool 반환 영구 차단. 성능은 v03 Handle과 동등    |
 
 ## 빌드/테스트
 
