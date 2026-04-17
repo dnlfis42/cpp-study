@@ -1,0 +1,5 @@
+# clangd 캐시 파일
+.cache/
+
+# cmake 빌드 산출물
+build/
