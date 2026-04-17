@@ -1,0 +1,3 @@
+add_executable(test_objpool_v03 test_object_pool.cpp)
+target_link_libraries(test_objpool_v03 PRIVATE objpool_v03 GTest::gtest_main)
+add_test(NAME test_objpool_v03 COMMAND test_objpool_v03)
