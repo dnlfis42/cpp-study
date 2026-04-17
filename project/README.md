@@ -6,6 +6,7 @@ C++ 저수준 컴포넌트 학습 프로젝트. 각 디렉터리는 `v01`~`vNN` 
 
 - [linear-buffer](linear-buffer/) — 고정 용량 선형 바이트 버퍼. 메시지 단위 직렬화/역직렬화
 - [ring-buffer](ring-buffer/) — 고정 용량 원형 바이트 버퍼. 네트워크 스트림 수신/송신
+- [object-pool](object-pool/) — 고정/가변 크기 객체 풀. new/delete 대체, RAII 자원 관리
 
 ## 빌드
 
