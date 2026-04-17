@@ -91,4 +91,8 @@ Raw를 private로 내려도 내부 호출자(`acquire()`, `Deleter::operator()`)
 
 ## 다음 버전 힌트
 
-- **v05**: `union Slot { T value; size_t next; }` intrusive 저장 — T와 next의 **메모리 공유**. `sizeof(Slot) = max(sizeof(T), sizeof(size_t))`. T 생애주기를 placement new / `~T()`로 직접 제어 → `emplace(Args&&...)` 지원
+- **v05**: 청크 기반 **가변 크기** 풀. 고갈 시 새 청크 자동 할당. Non-intrusive `Node { T data; Node* next; }` — **인덱스 아닌 포인터로 연결**해 청크 경계 무관. 포인터 안정성 유지한 채 성장
+
+> **intrusive union 실험 (원본 v05 설계)은 스킵**.
+> `union Slot { T value; size_t next; }`로 메모리 공유 + placement new로 생애주기 수동 관리하는 패턴은 메모리 절약 vs 성능 20% 손해 트레이드오프. TCP 서버 맥락(T가 큰 세션 구조체)에선 이득 적어 이 연작에서 생략.
+> 관심 있으면 `concept/placement-new/` 같은 짧은 실험으로 따로 정리 예정.
