@@ -51,7 +51,7 @@
 
 ### 주파수 고정 전략
 
-`performance` governor만으로는 부족해 — boost/throttle 사이클 때문에 동일 크기도 매 실행마다 10~15% 편차. 주파수 상한을 base clock 수준(3.0 GHz)으로 잠그면:
+`performance` governor만으로는 부족 — boost/throttle 사이클 때문에 동일 크기도 매 실행마다 10~15% 편차. 주파수 상한을 base clock 수준(3.0 GHz)으로 잠그면:
 
 - boost 동작 금지 → 발열 감소 → 스로틀 이벤트 없음
 - 절대 성능은 내려가지만 **상대 비교가 정확**
