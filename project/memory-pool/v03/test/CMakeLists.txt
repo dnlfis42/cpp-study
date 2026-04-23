@@ -1,0 +1,3 @@
+add_executable(test_mempool_v03 test_memory_pool.cpp)
+target_link_libraries(test_mempool_v03 PRIVATE mempool_v03 GTest::gtest_main)
+add_test(NAME test_mempool_v03 COMMAND test_mempool_v03)
