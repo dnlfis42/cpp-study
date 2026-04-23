@@ -1,11 +1,9 @@
 #!/bin/bash
 set -e
 
-# v01과 동일 전략 — 주파수 상한 고정 + 쿨다운 반복
-
-ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
-BENCH="$ROOT/build/release/bin/bench_linbuf_v02"
-RUNS=${RUNS:-3}
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+BENCH="$ROOT/build/release/bin/mempool_v02_bench"
+RUNS=${RUNS:-1}
 COOLDOWN=${COOLDOWN:-10}
 FREQ_LIMIT=${FREQ_LIMIT:-3.0GHz}
 

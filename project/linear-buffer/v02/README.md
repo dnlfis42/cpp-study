@@ -70,4 +70,4 @@ v01과 동일 패턴:
 - **n=16384 (L1 경계)**: 45 Gi/s로 반토막 — 32 KiB L1 한계
 - **n ≥ 32768 (L2)**: 31 Gi/s 수렴
 
-스크립트: [../script/run_bench_v02.sh](../script/run_bench_v02.sh)
+스크립트: [../script/run_linbuf_v02_bench.sh](../script/run_linbuf_v02_bench.sh)

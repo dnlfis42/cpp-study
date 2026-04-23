@@ -56,7 +56,7 @@
 - boost 동작 금지 → 발열 감소 → 스로틀 이벤트 없음
 - 절대 성능은 내려가지만 **상대 비교가 정확**
 
-스크립트: [../script/run_bench_v01.sh](../script/run_bench_v01.sh)
+스크립트: [../script/run_linbuf_v01_bench.sh](../script/run_linbuf_v01_bench.sh)
 
 ## 실행
 
@@ -65,5 +65,5 @@ cmake --workflow --preset debug
 ctest --preset test
 
 # 벤치 (CPU 고정 + 반복 측정)
-./project/linear-buffer/script/run_bench_v01.sh
+./script/run_LIBOF_linear-buffer_v01_bench.sh
 ```

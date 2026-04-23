@@ -1,3 +1,3 @@
-add_executable(test_ringbuf_v02 test_ring_buffer.cpp)
-target_link_libraries(test_ringbuf_v02 PRIVATE ringbuf_v02 GTest::gtest_main)
-add_test(NAME test_ringbuf_v02 COMMAND test_ringbuf_v02)
+add_executable(ringbuf_v02_test ringbuf_v02_test.cpp)
+target_link_libraries(ringbuf_v02_test PRIVATE ringbuf_v02 GTest::gtest_main)
+add_test(NAME ringbuf_v02_test COMMAND ringbuf_v02_test)

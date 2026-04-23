@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
-BENCH="$ROOT/build/release/bin/bench_ringbuf_v01"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+BENCH="$ROOT/build/release/bin/objpool_v04_bench"
 RUNS=${RUNS:-1}
 COOLDOWN=${COOLDOWN:-10}
 FREQ_LIMIT=${FREQ_LIMIT:-3.0GHz}

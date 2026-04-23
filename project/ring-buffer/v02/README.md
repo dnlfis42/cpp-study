@@ -75,7 +75,7 @@ v01과 동일 (시그니처만 template 인스턴스로 바뀜):
 - **BM_WriteRead<N>**: `write(N/2) + read(N/2)` — copy 기반
 - **BM_ZeroCopy<N>**: `memcpy(write_ptr, ...) + move_*_pos` — 단방향 memcpy
 
-스크립트: [../script/run_bench_v02.sh](../script/run_bench_v02.sh)
+스크립트: [../script/run_ringbuf_v02_bench.sh](../script/run_ringbuf_v02_bench.sh)
 
 ### 결과 (v01 vs v02, 동일 chunk)
 
@@ -102,7 +102,7 @@ v01과 동일 (시그니처만 template 인스턴스로 바뀜):
 
 ```bash
 sudo perf stat -e cycles,instructions,branches,branch-misses \
-  taskset -c 2 ./build/release/bin/bench_ringbuf_v02 \
+  taskset -c 2 ./build/release/bin/ringbuf_v02_bench \
   --benchmark_filter='BM_ZeroCopy<8192>$' --benchmark_min_time=3s
 ```
 
@@ -122,7 +122,7 @@ sudo perf stat -e cycles,instructions,branches,branch-misses \
 ### objdump 증거
 
 ```
-$ objdump -d --demangle build/release/bin/bench_ringbuf_v02 \
+$ objdump -d --demangle build/release/bin/ringbuf_v02_bench \
   | grep -A 50 'BM_ZeroCopy<8192ul>' | grep -E 'rep|memcpy'
 
 db5c:  f3 48 a5   rep movsq %ds:(%rsi),%es:(%rdi)

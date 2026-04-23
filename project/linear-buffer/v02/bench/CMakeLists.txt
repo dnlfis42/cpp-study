@@ -1,2 +1,2 @@
-add_executable(bench_linbuf_v02 bench_linear_buffer.cpp)
-target_link_libraries(bench_linbuf_v02 PRIVATE linbuf_v02 benchmark::benchmark)
+add_executable(linbuf_v02_bench linbuf_v02_bench.cpp)
+target_link_libraries(linbuf_v02_bench PRIVATE linbuf_v02 benchmark::benchmark)

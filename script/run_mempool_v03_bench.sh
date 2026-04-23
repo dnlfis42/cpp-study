@@ -1,14 +1,9 @@
 #!/bin/bash
 set -e
 
-# 안정 측정 전략
-# - 주파수를 3 GHz로 상한 고정 → boost/throttle 사이클 제거
-# - CPU 2번 코어에 고정
-# - 반복 실행 사이 쿨다운
-
-ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
-BENCH="$ROOT/build/release/bin/bench_linbuf_v01"
-RUNS=${RUNS:-3}
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+BENCH="$ROOT/build/release/bin/mempool_v03_bench"
+RUNS=${RUNS:-1}
 COOLDOWN=${COOLDOWN:-10}
 FREQ_LIMIT=${FREQ_LIMIT:-3.0GHz}
 

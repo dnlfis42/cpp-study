@@ -77,7 +77,7 @@ v02와 동일. 구현만 바뀜.
 
 환경: Intel, gcc 13.3, `-O3`, 상한 3.0 GHz 고정, `taskset -c 2`
 
-스크립트: [../script/run_bench_v03.sh](../script/run_bench_v03.sh)
+스크립트: [../script/run_ringbuf_v03_bench.sh](../script/run_ringbuf_v03_bench.sh)
 
 ### 결과 (v01 / v02 / v03 비교, WriteRead)
 
@@ -111,7 +111,7 @@ v02와 동일. 구현만 바뀜.
 
 ```bash
 sudo perf stat -e cycles,instructions \
-  taskset -c 2 ./build/release/bin/bench_ringbuf_v03 \
+  taskset -c 2 ./build/release/bin/ringbuf_v03_bench \
   --benchmark_filter='BM_WriteRead<8192>$' --benchmark_min_time=3s
 ```
 

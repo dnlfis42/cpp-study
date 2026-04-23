@@ -1,5 +1,5 @@
-add_executable(bench_ringbuf_v01 bench_ring_buffer.cpp)
+add_executable(ringbuf_v01_bench ringbuf_v01_bench.cpp)
 target_link_libraries(
-    bench_ringbuf_v01
+    ringbuf_v01_bench
     PRIVATE ringbuf_v01 benchmark::benchmark
 )

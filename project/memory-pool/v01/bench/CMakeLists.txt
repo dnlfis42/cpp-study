@@ -1,5 +1,5 @@
-add_executable(bench_mempool_v01 bench_memory_pool.cpp)
+add_executable(mempool_v01_bench mempool_v01_bench.cpp)
 target_link_libraries(
-    bench_mempool_v01
+    mempool_v01_bench
     PRIVATE mempool_v01 benchmark::benchmark
 )

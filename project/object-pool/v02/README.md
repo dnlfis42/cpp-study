@@ -67,7 +67,7 @@ v04에서 Raw API를 private로 내려 Handle 전용으로 좁히는 건 별개 
 - **BM_Pool_Raw**: v01과 동일 경로 — 비교 기준
 - **BM_Pool_Handle**: `acquire_unique()` + Handle 소멸 → Deleter 호출
 
-스크립트: [../script/run_bench_v02.sh](../script/run_bench_v02.sh)
+스크립트: [../script/run_objpool_v02_bench.sh](../script/run_objpool_v02_bench.sh)
 
 ### 실측
 

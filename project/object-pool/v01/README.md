@@ -52,7 +52,7 @@ T* p = pool.acquire();
 - **BM_Pool_Warmup**: churn 후 — free list 섞임 + storage warm (현실 워크로드에 가까움)
 - **BM_NewDelete**: glibc malloc 베이스라인
 
-스크립트: [../script/run_bench_v01.sh](../script/run_bench_v01.sh)
+스크립트: [../script/run_objpool_v01_bench.sh](../script/run_objpool_v01_bench.sh)
 
 ### 실측
 

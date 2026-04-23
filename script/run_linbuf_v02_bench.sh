@@ -1,9 +1,11 @@
 #!/bin/bash
 set -e
 
-ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
-BENCH="$ROOT/build/release/bin/bench_objpool_v04"
-RUNS=${RUNS:-1}
+# v01과 동일 전략 — 주파수 상한 고정 + 쿨다운 반복
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+BENCH="$ROOT/build/release/bin/linbuf_v02_bench"
+RUNS=${RUNS:-3}
 COOLDOWN=${COOLDOWN:-10}
 FREQ_LIMIT=${FREQ_LIMIT:-3.0GHz}
 

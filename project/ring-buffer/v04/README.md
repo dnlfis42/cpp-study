@@ -74,7 +74,7 @@ v03과 동일. 구현만 바뀜.
 
 환경: Intel, gcc 13.3, `-O3`, 상한 3.0 GHz 고정, `taskset -c 2`
 
-스크립트: [../script/run_bench_v04.sh](../script/run_bench_v04.sh)
+스크립트: [../script/run_ringbuf_v04_bench.sh](../script/run_ringbuf_v04_bench.sh)
 
 ### 실측 결과: v03와 동등
 

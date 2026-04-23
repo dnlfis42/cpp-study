@@ -1,5 +1,5 @@
-add_executable(bench_objpool_v01 bench_object_pool.cpp)
+add_executable(objpool_v01_bench objpool_v01_bench.cpp)
 target_link_libraries(
-    bench_objpool_v01
+    objpool_v01_bench
     PRIVATE objpool_v01 benchmark::benchmark
 )

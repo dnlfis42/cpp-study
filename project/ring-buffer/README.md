@@ -121,8 +121,8 @@ cmake --workflow --preset debug
 ctest --preset test
 
 # 벤치 (CPU 고정 + 반복)
-./project/ring-buffer/script/run_bench_v01.sh
-./project/ring-buffer/script/run_bench_v02.sh
-./project/ring-buffer/script/run_bench_v03.sh
-./project/ring-buffer/script/run_bench_v04.sh
+./script/run_ringbuf_v01_bench.sh
+./script/run_ringbuf_v02_bench.sh
+./script/run_ringbuf_v03_bench.sh
+./script/run_ringbuf_v04_bench.sh
 ```

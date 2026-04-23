@@ -62,7 +62,7 @@ v02와 동일. 구현만 바뀜.
 - **BM_Pool_Raw**: v01/v02와 동일 시나리오 — 자료구조 차이만 드러남
 - **BM_Pool_Handle**: v02와 동일 Handle 경로
 
-스크립트: [../script/run_bench_v03.sh](../script/run_bench_v03.sh)
+스크립트: [../script/run_objpool_v03_bench.sh](../script/run_objpool_v03_bench.sh)
 
 ### 실측
 

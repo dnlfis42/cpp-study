@@ -77,7 +77,7 @@ Hot path 극한 최적화가 필요하면 v01/v02 선택. 일반적으론 v04가
 
 Raw 경로 없으므로 `BM_Pool_Raw` 제거. v03 Handle 결과와 직접 비교 가능.
 
-스크립트: [../script/run_bench_v04.sh](../script/run_bench_v04.sh)
+스크립트: [../script/run_objpool_v04_bench.sh](../script/run_objpool_v04_bench.sh)
 
 ### 실측: v03 Handle과 동등
 

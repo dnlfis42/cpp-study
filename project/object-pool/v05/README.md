@@ -98,7 +98,7 @@ v04 + 하나 추가:
 - **BM_Pool_Handle**: hot loop, 첫 청크만 사용 (성장 비용 없음)
 - 고정 풀(v04)과 직접 비교 가능
 
-스크립트: [../script/run_bench_v05.sh](../script/run_bench_v05.sh)
+스크립트: [../script/run_objpool_v05_bench.sh](../script/run_objpool_v05_bench.sh)
 
 ### 실측
 

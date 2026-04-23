@@ -108,9 +108,9 @@ cmake --workflow --preset debug
 ctest --preset test
 
 # 버전별 벤치
-./project/object-pool/script/run_bench_v01.sh
-./project/object-pool/script/run_bench_v02.sh
-./project/object-pool/script/run_bench_v03.sh
-./project/object-pool/script/run_bench_v04.sh
-./project/object-pool/script/run_bench_v05.sh
+./script/run_objpool_v01_bench.sh
+./script/run_objpool_v02_bench.sh
+./script/run_objpool_v03_bench.sh
+./script/run_objpool_v04_bench.sh
+./script/run_objpool_v05_bench.sh
 ```

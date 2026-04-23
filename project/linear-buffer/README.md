@@ -106,6 +106,6 @@ cmake --workflow --preset debug
 ctest --preset test
 
 # 벤치 (CPU 고정 + 반복)
-./project/linear-buffer/script/run_bench_v01.sh
-./project/linear-buffer/script/run_bench_v02.sh
+./script/run_linbuf_v01_bench.sh
+./script/run_linbuf_v02_bench.sh
 ```
