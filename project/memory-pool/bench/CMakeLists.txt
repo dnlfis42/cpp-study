@@ -1,0 +1,2 @@
+add_executable(mempool_huge_page_bench mempool_huge_page_bench.cpp)
+target_link_libraries(mempool_huge_page_bench PRIVATE benchmark::benchmark)
