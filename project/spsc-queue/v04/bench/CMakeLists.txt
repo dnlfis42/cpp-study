@@ -1,0 +1,2 @@
+add_executable(spscq_v04_bench spscq_v04_bench.cpp)
+target_link_libraries(spscq_v04_bench PRIVATE spscq_v04 benchmark::benchmark)
