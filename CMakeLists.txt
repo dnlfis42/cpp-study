@@ -47,6 +47,5 @@ find_package(benchmark REQUIRED)
 enable_testing()
 
 # 프로젝트 경로
-# add_subdirectory(concept)
-# add_subdirectory(sandbox)
+add_subdirectory(concept)
 add_subdirectory(project)
