@@ -24,9 +24,20 @@ public:
 
 public:
     std::size_t capacity() const noexcept { return N - 1; }
-    std::size_t size() const noexcept { return (N + tail_ - head_) & (N - 1); }
-    bool empty() const noexcept { return head_ == tail_; }
-    bool full() const noexcept { return ((tail_ + 1) & (N - 1)) == head_; }
+    std::size_t size() const noexcept {
+        auto h = head_.load(std::memory_order_relaxed);
+        auto t = tail_.load(std::memory_order_relaxed);
+        return (N + t - h) & (N - 1);
+    }
+    bool empty() const noexcept {
+        return head_.load(std::memory_order_relaxed) ==
+               tail_.load(std::memory_order_relaxed);
+    }
+    bool full() const noexcept {
+        auto t = tail_.load(std::memory_order_relaxed);
+        auto h = head_.load(std::memory_order_relaxed);
+        return ((t + 1) & (N - 1)) == h;
+    }
 
 public:
     bool push(const T& val) {

@@ -7,7 +7,7 @@
 #include <cstddef>
 #include <utility>
 
-namespace spscq::v04 {
+namespace spscq::v05 {
 
 template <typename T, std::size_t N>
 class SpscQueue {
@@ -71,10 +71,10 @@ public:
 
 private:
     std::unique_ptr<T[]> buf_;
-    std::atomic<std::size_t> head_{0};
-    std::atomic<std::size_t> tail_{0};
-    std::size_t head_cached_{0};
+    alignas(64) std::atomic<std::size_t> head_{0};
     std::size_t tail_cached_{0};
+    alignas(64) std::atomic<std::size_t> tail_{0};
+    std::size_t head_cached_{0};
 };
 
-} // namespace spscq::v04
+} // namespace spscq::v05
