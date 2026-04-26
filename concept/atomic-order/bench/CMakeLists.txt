@@ -1,0 +1,2 @@
+add_executable(atomic_order_bench atomic_order_bench.cpp)
+target_link_libraries(atomic_order_bench PRIVATE)

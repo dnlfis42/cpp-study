@@ -173,7 +173,7 @@ per-op MOMC 비율 (100M iter × 2 thread × 7 reps = 1.4G ops):
 
 - ~~**HT sibling vs 다른 물리 코어 비교**~~ → 측정 완료. 직관 정반대 결과 (발견 #5)
 - **cache line 크기 sweep** — 64 B, 128 B padding 효과 비교 (Intel 일부는 prefetcher가 인접 line까지 가져와서 128 B 권장)
-- **`memory_order`별 비용** (`relaxed` vs `acq_rel` vs `seq_cst`) — 별도 노트 `concept/atomic-order/`로 (본 측정은 `relaxed`만)
+- ~~**`memory_order`별 비용** (`relaxed` vs `acq_rel` vs `seq_cst`)~~ → 측정 완료. `concept/atomic-order/` 참고. x86 fetch_add는 memory_order 무관, seq_cst store만 MFENCE로 30× 비쌈.
 - **다양한 atomic 연산** (`load`/`store`/`exchange`/`CAS`) 의 LOCK 비용 비교
 - **3+ thread scaling** — contention이 thread 수에 따라 어떻게 커지는지
 - **NUMA cross-node** (가능한 시스템에서) — local L3 vs remote L3 비용
