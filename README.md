@@ -1,39 +1,55 @@
 # cpp-study
 
-C++ / 리눅스 저수준 학습 저장소. C++20 중심. 자료구조·시스템 호출·메모리 모델을 직접 만들면서 측정으로 검증.
+C++ / 리눅스 저수준 학습 저장소. 자료구조·동시성·메모리 시스템을 직접 구현하고 측정으로 검증한다.
 
-## 구성
+## 트랙
 
-- [concept](concept/) — 학습 노트 + 짧은 실험 (linux-memory, huge-page 등)
-- [project](project/) — 미니 프로젝트. 각 과제 아래 `v01`~`vNN` 진화 (linear-buffer, ring-buffer, object-pool, memory-pool)
-- [script](script/) — 벤치 실행 스크립트. 모든 실행 파일 통합 명명: `<lib>_v<NN>_<test|bench>` 또는 `<lib>_<name>_bench`
+| 트랙                | 디렉터리   | 형태                          |
+| :------------------ | :--------- | :---------------------------- |
+| [concept](concept/) | `concept/` | 노트 전용 또는 코드+벤치      |
+| [project](project/) | `project/` | vNN 버전 단위, 설계 점진 발전 |
 
 ## 빌드
 
-```bash
-cmake --workflow --preset debug    # 빌드 + 테스트
-ctest --preset test                # 테스트만 재실행
+### 요구사항
 
-cmake --workflow --preset release  # 벤치용 최적화 빌드
-```
+| 항목             | 최소 버전 |
+| :--------------- | :-------- |
+| C++              | 20        |
+| CMake            | 3.25      |
+| GTest            | -         |
+| Google Benchmark | -         |
 
-## 벤치 실행
+### 커맨드
 
-CPU 주파수 고정 + 코어 핀 (sudo 필요):
+| 커맨드                                 | 동작                                   |
+| :------------------------------------- | :------------------------------------- |
+| `cmake --workflow --preset debug`      | configure + build (Debug)              |
+| `cmake --workflow --preset release`    | configure + build (Release, 벤치용)    |
+| `cmake --workflow --preset asan`       | configure + build (Debug + ASAN·UBSAN) |
+| `cmake --workflow --preset debug-test` | configure + build + test (Debug)       |
+| `cmake --workflow --preset asan-test`  | configure + build + test (ASAN·UBSAN)  |
+| `ctest --preset debug`                 | test only (debug 빌드 전제)            |
+| `ctest --preset asan`                  | test only (asan 빌드 전제)             |
 
-```bash
-./script/run_<lib>_v<NN>_bench.sh         # 예: ./script/run_mempool_v03_bench.sh
-./script/run_mempool_huge_page_bench.sh   # 크로스-실험 (huge page TLB 측정)
-```
+## 환경
 
-벤치 규약: 3.0 GHz 고정, `taskset -c 2`, 10 repetitions + aggregates_only, CV < 1% 목표.
+### 하드웨어
 
-## 빌드 산출물 명명
+| 항목      | 값                                          |
+| :-------- | :------------------------------------------ |
+| CPU       | Intel Core i7-9750H (6C/12T, base 2.60 GHz) |
+| L1d / L1i | 32 KiB per core                             |
+| L2        | 256 KiB per core                            |
+| L3        | 12 MiB (shared)                             |
+| OS        | Ubuntu 24.04                                |
+| 컴파일러  | GCC 13.3                                    |
 
-| 종류             | 패턴                       | 예                        |
-| ---------------- | -------------------------- | ------------------------- |
-| 버전별 테스트    | `<lib>_v<NN>_test`         | `mempool_v03_test`        |
-| 버전별 벤치      | `<lib>_v<NN>_bench`        | `mempool_v03_bench`       |
-| 크로스 실험 벤치 | `<lib>_<experiment>_bench` | `mempool_huge_page_bench` |
+### 벤치마크
 
-라이브러리 약자: `linbuf` / `ringbuf` / `objpool` / `mempool`.
+| 항목        | 값                                                       |
+| :---------- | :------------------------------------------------------- |
+| 주파수      | 3.0 GHz 고정 (governor: performance)                     |
+| 코어 핀     | st: core 2 / dt: core 2,4 (non-HT) · 2,8 (HT) / mt: 가변 |
+| repetitions | 10, aggregates_only                                      |
+| 목표 CV     | < 1%                                                     |

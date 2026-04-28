@@ -15,6 +15,15 @@
       "name": "release",
       "binaryDir": "${sourceDir}/build/release",
       "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
+      "name": "asan",
+      "inherits": "debug",
+      "binaryDir": "${sourceDir}/build/asan",
+      "cacheVariables": {
+        "CMAKE_CXX_FLAGS": "-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all",
+        "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address,undefined"
+      }
     }
   ],
   "buildPresets": [
@@ -27,12 +36,22 @@
       "name": "release",
       "configurePreset": "release",
       "jobs": 0
+    },
+    {
+      "name": "asan",
+      "configurePreset": "asan",
+      "jobs": 0
     }
   ],
   "testPresets": [
     {
-      "name": "test",
+      "name": "debug",
       "configurePreset": "debug",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "asan",
+      "configurePreset": "asan",
       "output": { "outputOnFailure": true }
     }
   ],
@@ -49,6 +68,29 @@
       "steps": [
         { "type": "configure", "name": "release" },
         { "type": "build", "name": "release" }
+      ]
+    },
+    {
+      "name": "asan",
+      "steps": [
+        { "type": "configure", "name": "asan" },
+        { "type": "build", "name": "asan" }
+      ]
+    },
+    {
+      "name": "debug-test",
+      "steps": [
+        { "type": "configure", "name": "debug" },
+        { "type": "build", "name": "debug" },
+        { "type": "test", "name": "debug" }
+      ]
+    },
+    {
+      "name": "asan-test",
+      "steps": [
+        { "type": "configure", "name": "asan" },
+        { "type": "build", "name": "asan" },
+        { "type": "test", "name": "asan" }
       ]
     }
   ]
