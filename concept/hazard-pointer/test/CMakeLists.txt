@@ -1,0 +1,3 @@
+add_executable(hazard_pointer_test hazard_pointer_test.cpp)
+target_link_libraries(hazard_pointer_test PRIVATE hazard_pointer)
+add_test(NAME hazard_pointer_test COMMAND hazard_pointer_test)
