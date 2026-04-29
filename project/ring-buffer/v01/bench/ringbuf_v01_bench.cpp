@@ -10,7 +10,6 @@
 
 using ringbuf::v01::RingBuffer;
 
-// --- write + read 사이클 (wrap 없음) ---
 static void BM_WriteRead(benchmark::State& state) {
     const std::size_t chunk = static_cast<std::size_t>(state.range(0));
     std::vector<std::byte> src(chunk, std::byte{0xAB});
@@ -28,18 +27,14 @@ static void BM_WriteRead(benchmark::State& state) {
     );
 }
 BENCHMARK(BM_WriteRead)
-    ->Arg(16)
     ->Arg(64)
     ->Arg(256)
     ->Arg(1024)
     ->Arg(4096)
-    ->Arg(8192)
     ->Arg(16384)
-    ->Arg(32768)
     ->Arg(65536);
 
-// --- wrap 강제 ---
-static void BM_WriteReadWrap(benchmark::State& state) {
+static void BM_Wrap_WriteRead(benchmark::State& state) {
     const std::size_t chunk = static_cast<std::size_t>(state.range(0));
     std::vector<std::byte> src(chunk, std::byte{0xAB});
     std::vector<std::byte> dst(chunk);
@@ -58,19 +53,14 @@ static void BM_WriteReadWrap(benchmark::State& state) {
         state.iterations() * static_cast<std::int64_t>(chunk) * 2
     );
 }
-BENCHMARK(BM_WriteReadWrap)
-    ->Arg(16)
+BENCHMARK(BM_Wrap_WriteRead)
     ->Arg(64)
     ->Arg(256)
     ->Arg(1024)
     ->Arg(4096)
-    ->Arg(8192)
     ->Arg(16384)
-    ->Arg(32768)
     ->Arg(65536);
 
-// --- zero-copy (wrap 없음) ---
-// write_ptr + memcpy + move_write_pos (단방향 memcpy 비용 측정)
 static void BM_ZeroCopy(benchmark::State& state) {
     const std::size_t chunk = static_cast<std::size_t>(state.range(0));
     std::vector<std::byte> src(chunk, std::byte{0xAB});
@@ -89,14 +79,11 @@ static void BM_ZeroCopy(benchmark::State& state) {
     );
 }
 BENCHMARK(BM_ZeroCopy)
-    ->Arg(16)
     ->Arg(64)
     ->Arg(256)
     ->Arg(1024)
     ->Arg(4096)
-    ->Arg(8192)
     ->Arg(16384)
-    ->Arg(32768)
     ->Arg(65536);
 
 BENCHMARK_MAIN();

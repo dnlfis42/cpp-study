@@ -64,7 +64,6 @@ TEST(RingBuffer, WriteBeyondCapacityReturnsFalse) {
     auto in = make_seq(10);
     EXPECT_FALSE(rb.write(in.data(), in.size()));
 
-    // 상태 변경 없음
     EXPECT_TRUE(rb.empty());
     EXPECT_EQ(rb.available(), 4u);
 }
@@ -78,7 +77,6 @@ TEST(RingBuffer, ReadMoreThanAvailableReturnsFalse) {
     std::array<std::byte, 10> out{};
     EXPECT_FALSE(rb.read(out.data(), out.size()));
 
-    // 상태 변경 없음
     EXPECT_EQ(rb.size(), 3u);
 }
 
@@ -132,9 +130,9 @@ TEST(RingBuffer, WrapAroundWrite) {
     rb.write(a.data(), a.size());
 
     std::array<std::byte, 4> dump{};
-    rb.read(dump.data(), dump.size()); // read_pos=4, size=2, write_pos=6
+    rb.read(dump.data(), dump.size());
 
-    auto b = make_seq(5, 100); // 100..104, wrap 발생 (write_pos 6 → 3)
+    auto b = make_seq(5, 100);
     EXPECT_TRUE(rb.write(b.data(), b.size()));
     EXPECT_EQ(rb.size(), 7u);
 
@@ -171,7 +169,7 @@ TEST(RingBuffer, WritableSizeBeforeWrap) {
     auto in = make_seq(3);
     rb.write(in.data(), in.size());
 
-    EXPECT_EQ(rb.writable_size(), 5u); // write_pos=3, 끝까지 5
+    EXPECT_EQ(rb.writable_size(), 5u);
 }
 
 TEST(RingBuffer, WritableSizeAcrossWrap) {
@@ -181,10 +179,10 @@ TEST(RingBuffer, WritableSizeAcrossWrap) {
     rb.write(in.data(), in.size());
 
     std::array<std::byte, 4> dump{};
-    rb.read(dump.data(), dump.size()); // read_pos=4, write_pos=6, size=2
+    rb.read(dump.data(), dump.size());
 
-    EXPECT_EQ(rb.writable_size(), 2u); // write_pos부터 끝까지 = 2
-    EXPECT_EQ(rb.available(), 6u);     // 총 남은 공간 = 6
+    EXPECT_EQ(rb.writable_size(), 2u);
+    EXPECT_EQ(rb.available(), 6u);
 }
 
 TEST(RingBuffer, MoveWritePosAdvancesWritePos) {
@@ -217,11 +215,11 @@ TEST(RingBuffer, ReadableSizeAcrossWrap) {
     rb.write(in.data(), in.size());
 
     std::array<std::byte, 4> dump{};
-    rb.read(dump.data(), dump.size()); // read_pos=4, write_pos=6, size=2
+    rb.read(dump.data(), dump.size());
 
-    rb.write(in.data(), 4); // write_pos wrap → 2, size=6
+    rb.write(in.data(), 4);
 
-    EXPECT_EQ(rb.readable_size(), 4u); // read_pos=4부터 끝까지 = 4
+    EXPECT_EQ(rb.readable_size(), 4u);
     EXPECT_EQ(rb.size(), 6u);
 }
 
@@ -260,13 +258,13 @@ TEST(RingBuffer, InterleavedWriteRead) {
     RingBuffer rb{4};
 
     auto a = make_seq(3, 0);
-    rb.write(a.data(), a.size()); // size=3
+    rb.write(a.data(), a.size());
 
     std::array<std::byte, 2> out1{};
-    rb.read(out1.data(), out1.size()); // size=1
+    rb.read(out1.data(), out1.size());
 
     auto b = make_seq(3, 100);
-    rb.write(b.data(), b.size()); // size=4, wrap
+    rb.write(b.data(), b.size());
 
     std::array<std::byte, 4> out2{};
     EXPECT_TRUE(rb.read(out2.data(), out2.size()));

@@ -1,103 +1,99 @@
-# Ring Buffer v01
+# v01
 
-## 개요
+## 설계 의도
 
-- 고정 용량 원형 바이트 버퍼
-- `read_pos_` / `write_pos_` + `size_` (3 상태 변수)
-- wrap 시 두 번의 memcpy로 분할 처리
-- C++20, `std::byte`, `std::unique_ptr<std::byte[]>`
+- **`unique_ptr<byte[]>` 선택**: `vector<byte>`도 충분하지만 소유권 구조를 명확히 하고 `size()` 이름을 "읽을 수 있는 바이트 수"로 예약하기 위해 선택했다. 성능 차이는 없다.
+- **bool all-or-nothing I/O**: 실제 사용 패턴에서 partial transfer는 쓰이지 않는다. recv 시나리오는 `write_ptr` + `move_write_pos`, send/parse 시나리오는 완결 메시지 단위다. `linear-buffer`와 동일한 의미로 통일한다.
+- **`readable_size` / `writable_size`**: wrap이 있는 원형 버퍼 전용 개념. `available()`은 총 가용 공간이지만 wrap 직전까지 연속으로 쓸 수 있는 구간은 별도로 필요하다. scatter/gather I/O의 `iovec`과 연결된다.
 
-## 설계 결정 (회고 포함)
+## 측정
 
-### 왜 vector가 아닌 `unique_ptr<std::byte[]>`인가
+### WriteRead vs ZeroCopy
 
-처음에는 `std::vector<std::byte>`로 충분. 하지만:
+`BM_WriteRead`: `write(n)` + `read(n)`, memcpy 2회, 대역폭 `n * 2` 기준.
+`BM_ZeroCopy`: `memcpy(write_ptr, src, n)` + `move_write_pos` + `move_read_pos`, memcpy 1회, 대역폭 `n` 기준.
 
-- Rule of 5에서 move/copy default로 끝낼 수 있음 (unique_ptr이 소유권 명시)
-- `buf_.size()`를 `capacity_` 멤버로 캐시해 `size()` 의미를 "읽을 수 있는 바이트 수"로 예약 가능
+**가설**
 
-**교훈**: 성능 차이는 거의 없음 (`vector::size()`는 인라인됨). 진짜 이득은 **소유권 구조의 단순화**와 **`size()` 네이밍 의미론**.
+WriteRead는 memcpy 2회이므로 ZeroCopy 대비 약 2배 시간이 걸릴 것. n = 16384(버퍼 32 KB = L1 크기)에서 대역폭 급락이 있을 것.
 
-### 왜 raw I/O가 bool all-or-nothing인가
+**측정 결과**
 
-이전 구현은 `std::size_t` 반환으로 **partial transfer** 지원 (실제 전송량 반환). 하지만 사용처를 돌아보면:
+WriteRead:
 
-- **recv 시나리오**: `recv()`에서 받은 실제 바이트 수로 `move_write_pos()` 호출 — `write_ptr` + `move_write_pos` 조합 사용. `write()` 경로 안 탐
-- **send 시나리오**: 메시지는 완결되어야 함. "일부만 보낼 수 있어"는 의미 없음 — 실패면 버퍼 폐기
-- **헤더 파싱**: `peek(헤더 크기)` → 부족하면 `break` (더 기다림), 충분하면 처리
-- 어느 경우든 "일부만 전송" 동작은 쓰이지 않음
+| 조건    |    mean |    CV | 비고            |
+| :------ | ------: | ----: | :-------------- |
+| n=64    | 23.4 ns | 0.75% | 5.09 Gi/s       |
+| n=256   | 26.5 ns | 0.50% | 17.96 Gi/s      |
+| n=1024  | 40.6 ns | 0.33% | 47.01 Gi/s      |
+| n=4096  |  101 ns | 1.31% | 75.38 Gi/s (L1) |
+| n=16384 |  852 ns | 0.67% | 35.84 Gi/s (L2) |
+| n=65536 | 3809 ns | 1.26% | 32.06 Gi/s (L2) |
 
-그래서 **linear-buffer와 동일한 `bool` all-or-nothing 의미**로 통일. 실패 시 상태 변경 없음 보장.
+ZeroCopy:
 
-### 왜 `readable_size()` / `writable_size()`가 따로 있는가
+| 조건    |    mean |    CV | 비고            |
+| :------ | ------: | ----: | :-------------- |
+| n=64    | 19.2 ns | 0.11% | 3.11 Gi/s       |
+| n=256   | 20.9 ns | 0.07% | 11.42 Gi/s      |
+| n=1024  | 27.8 ns | 0.41% | 34.31 Gi/s      |
+| n=4096  | 56.9 ns | 0.41% | 67.04 Gi/s (L1) |
+| n=16384 |  415 ns | 0.83% | 36.81 Gi/s (L2) |
+| n=65536 | 1995 ns | 0.33% | 30.60 Gi/s (L2) |
 
-linear-buffer엔 없는 링 전용 개념:
+**분석**
 
-- `available()`: 총 쓸 수 있는 바이트 수 (wrap을 포함)
-- `writable_size()`: **현재 write_ptr 위치에서 연속으로** 쓸 수 있는 바이트 수 (wrap 직전까지)
+n >= 4096에서 WriteRead 시간은 ZeroCopy의 1.8~2.1배다(n=4096: 101 / 56.9 = 1.78, n=16384: 852 / 415 = 2.05). memcpy 횟수 차이가 시간 비율로 직결된다. n=64에서는 1.22배에 그치는데, 함수 호출·인덱스 계산 오버헤드가 memcpy 비용 대비 커지기 때문이다.
 
-wrap 상황에서 `write_ptr()` + `writable_size()`만으로는 부족할 수 있음 — 사용자가 직접 두 번에 나눠 써야 할 수도. 이는 **zero-copy recv** 같은 스캐터 I/O에서 `iovec`으로 연결됨.
+ZeroCopy는 n=4096(버퍼 8 KB)에서 67.04 Gi/s로 정점이다. n=16384(버퍼 32 KB = L1 크기)에서 36.81 Gi/s로 급락하며 L2 대역폭으로 수렴한다.
 
-## API 요약
+**결론**
 
-| 카테고리       | 함수                                                                                         |
-| :------------- | :------------------------------------------------------------------------------------------- |
-| 상태           | `capacity`, `size`, `available`, `empty`, `full`, `clear`                                    |
-| zero-copy      | `read_ptr`, `write_ptr`, `readable_size`, `writable_size`, `move_read_pos`, `move_write_pos` |
-| raw I/O (bool) | `read(byte*, n)`, `write(byte*, n)`, `peek(byte*, n)`                                        |
+memcpy 횟수가 처리량 직결 인자다. L1 핫 구간의 상한은 n=4096(버퍼 8 KB)이다.
 
-## 벤치마크
+### Wrap 오버헤드
 
-환경: Intel (12 logical cores, L1 32 KiB × 6), gcc 13.3, `-O3`
-측정 조건: CPU 상한 **3.0 GHz 고정**, `taskset -c 2`, 10 repetitions
+`BM_Wrap_WriteRead`: 버퍼 크기 `n + n / 2`, 초기 오프셋 `n / 2`로 write·read 경로에 wrap을 강제한다. split memcpy 두 번 호출이 반드시 발생한다.
 
-벤치 항목:
+**가설**
 
-- **BM_WriteRead**: `write(n) + read(n)` — 양방향 memcpy 2회. 대역폭은 `chunk * 2` 기준
-- **BM_WriteReadWrap**: 초기 오프셋으로 wrap 강제. 버퍼 크기 `chunk + chunk/2`
-- **BM_ZeroCopy**: `memcpy(write_ptr, src, n) + move_write_pos + move_read_pos` — 단방향 memcpy. 대역폭은 `chunk` 기준
+소/중 크기에서 split memcpy 두 번 호출 비용으로 오버헤드가 생길 것. 대역폭이 지배적인 대용량에서는 차이가 없을 것.
 
-| n (bytes) | WriteRead (mean) | WriteRead Gi/s | ZeroCopy (mean) | ZeroCopy Gi/s |
-| --------: | ---------------: | -------------: | --------------: | ------------: |
-|        16 |          24.1 ns |       1.2 Gi/s |         19.3 ns |      0.8 Gi/s |
-|        64 |          24.1 ns |       5.0 Gi/s |         19.3 ns |      3.1 Gi/s |
-|       256 |          27.1 ns |      17.6 Gi/s |         20.6 ns |     11.6 Gi/s |
-|      1024 |          40.7 ns |      46.8 Gi/s |         28.7 ns |     33.2 Gi/s |
-|      4096 |           102 ns |      75.1 Gi/s |         57.2 ns |     66.7 Gi/s |
-|      8192 |           245 ns |      62.2 Gi/s |          107 ns | **71.4 Gi/s** |
-|     16384 |           836 ns |      36.5 Gi/s |          418 ns |     36.5 Gi/s |
-|     32768 |          1905 ns |      32.0 Gi/s |          979 ns |     31.2 Gi/s |
-|     65536 |          3682 ns |      33.2 Gi/s |         1989 ns |     30.7 Gi/s |
+**측정 결과**
 
-### 관찰
+| 조건    | WriteRead | Wrap_WriteRead | 오버헤드 |
+| :------ | --------: | -------------: | -------: |
+| n=64    |   23.4 ns |        25.2 ns |     7.7% |
+| n=256   |   26.5 ns |        29.4 ns |    10.9% |
+| n=1024  |   40.6 ns |        44.2 ns |     8.9% |
+| n=4096  |    101 ns |         105 ns |     4.0% |
+| n=16384 |    852 ns |         831 ns |    -2.5% |
+| n=65536 |   3809 ns |        3899 ns |     2.4% |
 
-- **WriteRead ≈ ZeroCopy × 2**: WriteRead는 memcpy 2회, ZeroCopy는 1회. 시간 비율도 대략 2배 (예: n=4096에서 102 vs 57 ns)
-- **wrap 오버헤드 미미**: `WriteRead` vs `WriteReadWrap` 차이 n ≤ 4096에서 1~3 ns 수준. split memcpy 두 번 호출의 추가 비용은 작음
-- **n=8192 ZeroCopy 피크 71.4 Gi/s**: 버퍼 16 KB가 L1에 여유있게 들어감
-- **n ≥ 16384 (L1 초과)**: L2 대역폭으로 수렴 (~33 Gi/s 양방향, ~31 Gi/s 단방향)
+**분석**
 
-### linear-buffer 대비 오버헤드
+n <= 1024에서 7~11% 오버헤드가 일관되게 나타난다. n=4096에서 4%로 줄고, n=16384에서 -2.5%로 반전된다. 이 반전은 두 벤치가 사용하는 버퍼 크기 차이(WriteRead: 2n = 32 KB, Wrap_WriteRead: 1.5n = 24 KB)로 인한 캐시 적재 패턴 차이로 해석된다. n=4096의 CV가 3.06%로 다른 지점(0.1~1.3%)보다 높아 wrap 경계 위치에 따른 캐시 라인 정렬 변동이 있음을 시사한다.
 
-동일한 ZeroCopy(단방향 memcpy) 기준:
+**결론**
 
-|     n | linear-buffer | ring-buffer | ring 오버헤드 |
-| ----: | ------------: | ----------: | ------------: |
-|  4096 |       75 Gi/s |     67 Gi/s |          ~11% |
-|  8192 |       81 Gi/s |     71 Gi/s |          ~12% |
-| 16384 |       46 Gi/s |     37 Gi/s |          ~20% |
+wrap 오버헤드는 n <= 1024에서 ~10%, 대용량에서는 캐시 크기 차이가 결과를 역전시킬 수 있다.
 
-ring이 10~20% 느린 건 **`% capacity_` 나눗셈 + `size_` 별도 관리** 오버헤드. wrap 의미를 지원하기 위한 비용.
+## 개선
 
-스크립트: [../script/run_ringbuf_v01_bench.sh](../script/run_ringbuf_v01_bench.sh)
+고정 용량 원형 바이트 버퍼의 기반을 확립한다. `write_ptr` + `move_write_pos` 경로로 zero-copy recv를 수용하고, bool all-or-nothing I/O로 `linear-buffer`와 동일한 사용 패턴을 유지한다.
 
-## linear-buffer와의 차이
+## 트레이드오프
 
-| 항목            | linear-buffer           | ring-buffer                          |
-| :-------------- | :---------------------- | :----------------------------------- |
-| 위치            | 고정                    | 순환 (wrap)                          |
-| 상태 변수       | `read_pos_, write_pos_` | + `size_` (empty/full 구분)          |
-| `available()`   | `capacity - write_pos`  | `capacity - size`                    |
-| contiguous 개념 | 필요 없음               | `writable_size()`, `readable_size()` |
-| 주 용도         | 메시지 단위             | 스트림                               |
+wrap을 지원하는 대가로 `% capacity_` 나눗셈과 `size_` 별도 관리 비용이 든다. `linear-buffer`와 동일 조건(단방향 memcpy) 기준으로 10~20% 느리다.
 
-`linear-buffer`와 **대응되는 공통 API** (`write_ptr`, `read_ptr`, `move_*_pos`, `available`, `read`, `write`, `peek`)는 이름/의미를 맞춰 교차 사용 시 인지 부담 최소화.
+| 항목          | linear-buffer             | ring-buffer       |
+| :------------ | :------------------------ | :---------------- |
+| 위치          | 고정                      | 순환 (wrap)       |
+| 상태 변수     | `read_pos_`, `write_pos_` | + `size_`         |
+| `available()` | `capacity - write_pos`    | `capacity - size` |
+| wrap 산술     | 없음                      | `% capacity_`     |
+
+## 과제
+
+- `% capacity_` 나눗셈: capacity를 2의 거듭제곱으로 고정하면 `& (N-1)` 비트마스크로 대체 가능.
+- `size_` 별도 관리: empty/full 구분을 위해 3변수를 유지한다. 시퀀스 카운터 방식으로 제거 가능.
