@@ -2,7 +2,6 @@
 
 #include <gtest/gtest.h>
 
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -69,7 +68,6 @@ TEST(LinearBuffer, Char8RoundTrip) {
 
     char8_t in{u8'A'};
     lb << in;
-
     char8_t out{};
     lb >> out;
 
@@ -77,21 +75,23 @@ TEST(LinearBuffer, Char8RoundTrip) {
     EXPECT_TRUE(lb.empty());
 }
 
-// --- 공간 부족 throw ---
-TEST(LinearBuffer, WriteOverflowThrow) {
+// --- 공간 부족 / 데이터 부족 ---
+TEST(LinearBuffer, WriteOverflow) {
     LinearBuffer lb{3};
 
     int v{1};
+    lb << v;
 
-    EXPECT_THROW(lb << v, std::runtime_error);
+    EXPECT_FALSE(lb);
 }
 
-TEST(LinearBuffer, ReadUnderflowThrow) {
+TEST(LinearBuffer, ReadUnderflow) {
     LinearBuffer lb{64};
 
     int out{};
+    lb >> out;
 
-    EXPECT_THROW(lb >> out, std::runtime_error);
+    EXPECT_FALSE(lb);
 }
 
 // --- raw write/read ---
@@ -137,7 +137,6 @@ TEST(LinearBuffer, PeekDoesNotConsume) {
 
     int v{99};
     lb << v;
-
     std::byte out[sizeof(int)]{};
 
     EXPECT_TRUE(lb.peek(out, sizeof(int)));
@@ -271,10 +270,14 @@ TEST(LinearBuffer, MoveConstruct) {
 namespace {
 LinearBuffer& operator>>(LinearBuffer& lb, std::string_view& out) {
     std::uint8_t len{};
-    lb >> len; // 1바이트 부족 시 throw
+    lb >> len;
+    if (!lb) {
+        return lb;
+    }
 
     if (lb.size() < len) {
-        throw std::runtime_error("LinearBuffer: string payload underflow");
+        lb.set_fail();
+        return lb;
     }
 
     auto* ptr = reinterpret_cast<const char*>(lb.read_ptr());
@@ -284,7 +287,8 @@ LinearBuffer& operator>>(LinearBuffer& lb, std::string_view& out) {
 }
 LinearBuffer& operator<<(LinearBuffer& lb, std::string_view sv) {
     if (sv.size() > 0xFF) {
-        throw std::runtime_error("LinearBuffer: string length exceeds uint8_t");
+        lb.set_fail();
+        return lb;
     }
     auto len = static_cast<std::uint8_t>(sv.size());
     lb << len;
@@ -354,32 +358,37 @@ TEST(LinearBuffer, StringViewZeroCopy) {
     EXPECT_EQ(out, "zero-copy");
 }
 
-TEST(LinearBuffer, StringViewWriteOverflowThrow) {
+TEST(LinearBuffer, StringViewWriteOverflow) {
+    // 256바이트 — uint8_t 초과
     LinearBuffer lb{1024};
 
-    // 256바이트 — uint8_t 초과
     std::string too_long(256, 'x');
-    EXPECT_THROW(lb << std::string_view{too_long}, std::runtime_error);
+    lb << std::string_view{too_long};
+
+    EXPECT_FALSE(lb);
 }
 
-TEST(LinearBuffer, StringViewReadLengthUnderflowThrow) {
+TEST(LinearBuffer, StringViewReadLengthUnderflow) {
     // 길이(1바이트)조차 없음
     LinearBuffer lb{64};
 
     std::string_view out;
-    EXPECT_THROW(lb >> out, std::runtime_error);
+    lb >> out;
+
+    EXPECT_FALSE(lb);
 }
 
-TEST(LinearBuffer, StringViewReadPayloadUnderflowThrow) {
+TEST(LinearBuffer, StringViewReadPayloadUnderflow) {
     // 길이는 5라고 주장하지만 페이로드가 부족
     LinearBuffer lb{64};
 
     std::uint8_t fake_len{5};
     lb << fake_len;
-    // 페이로드 없이 바로 read 시도
 
     std::string_view out;
-    EXPECT_THROW(lb >> out, std::runtime_error);
+    lb >> out;
+
+    EXPECT_FALSE(lb);
 }
 
 TEST(LinearBuffer, StringViewMaxLength) {

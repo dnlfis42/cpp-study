@@ -6,3 +6,6 @@ build/
 
 # 벤치마크 스크립트
 script/
+
+# 벤치마크 결과
+result/

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <memory>
-#include <stdexcept>
+#include <type_traits>
 
 #include <cstddef>
 #include <cstring>
@@ -19,27 +19,61 @@ public:
     LinearBuffer(LinearBuffer&&) noexcept = default;
     LinearBuffer& operator=(LinearBuffer&&) noexcept = default;
 
-public: // 상태
+public:
+    explicit operator bool() const noexcept { return !fail_; }
+
+    template <typename T>
+        requires std::is_arithmetic_v<T>
+    LinearBuffer& operator<<(T v) noexcept {
+        if (fail_) {
+            return *this;
+        }
+
+        if (available() < sizeof(T)) {
+            fail_ = true;
+            return *this;
+        }
+
+        write_pod(v);
+        return *this;
+    }
+
+    template <typename T>
+        requires std::is_arithmetic_v<T>
+    LinearBuffer& operator>>(T& out) noexcept {
+        if (fail_) {
+            return *this;
+        }
+
+        if (size() < sizeof(T)) {
+            fail_ = true;
+            return *this;
+        }
+
+        read_pod(out);
+        return *this;
+    }
+
+public:
     std::size_t capacity() const noexcept { return capacity_; }
     std::size_t size() const noexcept { return write_pos_ - read_pos_; }
     std::size_t available() const noexcept { return capacity_ - write_pos_; }
     bool empty() const noexcept { return read_pos_ == write_pos_; }
 
-public: // 상태 변경
-    void clear() noexcept {
-        read_pos_ = 0;
-        write_pos_ = 0;
-    }
-
-public: // 직접 접근 (zero-copy)
+public:
     const std::byte* read_ptr() const noexcept {
         return buf_.get() + read_pos_;
     }
     std::byte* write_ptr() noexcept { return buf_.get() + write_pos_; }
+
+    void set_fail() noexcept { fail_ = true; }
+
+public:
     bool move_read_pos(std::size_t n) noexcept {
         if (size() < n) {
             return false;
         }
+
         read_pos_ += n;
         return true;
     }
@@ -47,15 +81,31 @@ public: // 직접 접근 (zero-copy)
         if (available() < n) {
             return false;
         }
+
         write_pos_ += n;
         return true;
     }
 
-public: // raw 바이트
+    void clear() noexcept {
+        read_pos_ = 0;
+        write_pos_ = 0;
+        fail_ = false;
+    }
+
+public:
+    bool peek(std::byte* dst, std::size_t n) const noexcept {
+        if (size() < n) {
+            return false;
+        }
+
+        std::memcpy(dst, buf_.get() + read_pos_, n);
+        return true;
+    }
     bool read(std::byte* dst, std::size_t n) noexcept {
         if (size() < n) {
             return false;
         }
+
         std::memcpy(dst, buf_.get() + read_pos_, n);
         read_pos_ += n;
         return true;
@@ -64,196 +114,30 @@ public: // raw 바이트
         if (available() < n) {
             return false;
         }
+
         std::memcpy(buf_.get() + write_pos_, src, n);
         write_pos_ += n;
         return true;
     }
-    bool peek(std::byte* dst, std::size_t n) const noexcept {
-        if (size() < n) {
-            return false;
-        }
-        std::memcpy(dst, buf_.get() + read_pos_, n);
-        return true;
-    }
-
-public: // primitive 직렬화
-    LinearBuffer& operator<<(bool v) {
-        write_pod(v);
-        return *this;
-    }
-    LinearBuffer& operator<<(char v) {
-        write_pod(v);
-        return *this;
-    }
-    LinearBuffer& operator<<(signed char v) {
-        write_pod(v);
-        return *this;
-    }
-    LinearBuffer& operator<<(unsigned char v) {
-        write_pod(v);
-        return *this;
-    }
-    LinearBuffer& operator<<(char8_t v) {
-        write_pod(v);
-        return *this;
-    }
-    LinearBuffer& operator<<(char16_t v) {
-        write_pod(v);
-        return *this;
-    }
-    LinearBuffer& operator<<(char32_t v) {
-        write_pod(v);
-        return *this;
-    }
-    LinearBuffer& operator<<(wchar_t v) {
-        write_pod(v);
-        return *this;
-    }
-    LinearBuffer& operator<<(short v) {
-        write_pod(v);
-        return *this;
-    }
-    LinearBuffer& operator<<(unsigned short v) {
-        write_pod(v);
-        return *this;
-    }
-    LinearBuffer& operator<<(int v) {
-        write_pod(v);
-        return *this;
-    }
-    LinearBuffer& operator<<(unsigned int v) {
-        write_pod(v);
-        return *this;
-    }
-    LinearBuffer& operator<<(long v) {
-        write_pod(v);
-        return *this;
-    }
-    LinearBuffer& operator<<(unsigned long v) {
-        write_pod(v);
-        return *this;
-    }
-    LinearBuffer& operator<<(long long v) {
-        write_pod(v);
-        return *this;
-    }
-    LinearBuffer& operator<<(unsigned long long v) {
-        write_pod(v);
-        return *this;
-    }
-    LinearBuffer& operator<<(float v) {
-        write_pod(v);
-        return *this;
-    }
-    LinearBuffer& operator<<(double v) {
-        write_pod(v);
-        return *this;
-    }
-    LinearBuffer& operator<<(long double v) {
-        write_pod(v);
-        return *this;
-    }
-
-    LinearBuffer& operator>>(bool& out) {
-        read_pod(out);
-        return *this;
-    }
-    LinearBuffer& operator>>(char& out) {
-        read_pod(out);
-        return *this;
-    }
-    LinearBuffer& operator>>(signed char& out) {
-        read_pod(out);
-        return *this;
-    }
-    LinearBuffer& operator>>(unsigned char& out) {
-        read_pod(out);
-        return *this;
-    }
-    LinearBuffer& operator>>(char8_t& out) {
-        read_pod(out);
-        return *this;
-    }
-    LinearBuffer& operator>>(char16_t& out) {
-        read_pod(out);
-        return *this;
-    }
-    LinearBuffer& operator>>(char32_t& out) {
-        read_pod(out);
-        return *this;
-    }
-    LinearBuffer& operator>>(wchar_t& out) {
-        read_pod(out);
-        return *this;
-    }
-    LinearBuffer& operator>>(short& out) {
-        read_pod(out);
-        return *this;
-    }
-    LinearBuffer& operator>>(unsigned short& out) {
-        read_pod(out);
-        return *this;
-    }
-    LinearBuffer& operator>>(int& out) {
-        read_pod(out);
-        return *this;
-    }
-    LinearBuffer& operator>>(unsigned int& out) {
-        read_pod(out);
-        return *this;
-    }
-    LinearBuffer& operator>>(long& out) {
-        read_pod(out);
-        return *this;
-    }
-    LinearBuffer& operator>>(unsigned long& out) {
-        read_pod(out);
-        return *this;
-    }
-    LinearBuffer& operator>>(long long& out) {
-        read_pod(out);
-        return *this;
-    }
-    LinearBuffer& operator>>(unsigned long long& out) {
-        read_pod(out);
-        return *this;
-    }
-    LinearBuffer& operator>>(float& out) {
-        read_pod(out);
-        return *this;
-    }
-    LinearBuffer& operator>>(double& out) {
-        read_pod(out);
-        return *this;
-    }
-    LinearBuffer& operator>>(long double& out) {
-        read_pod(out);
-        return *this;
-    }
 
 private:
     template <typename T>
-    void read_pod(T& out) {
-        if (size() < sizeof(T)) {
-            throw std::runtime_error("SerializeBuffer: insufficient data");
-        }
+    void read_pod(T& out) noexcept {
         std::memcpy(&out, buf_.get() + read_pos_, sizeof(T));
         read_pos_ += sizeof(T);
     }
     template <typename T>
-    void write_pod(const T& v) {
-        if (available() < sizeof(T)) {
-            throw std::runtime_error("SerializeBuffer: insufficient space");
-        }
+    void write_pod(const T& v) noexcept {
         std::memcpy(buf_.get() + write_pos_, &v, sizeof(T));
         write_pos_ += sizeof(T);
     }
 
-private: // 멤버
+private:
     std::unique_ptr<std::byte[]> buf_;
     std::size_t capacity_;
     std::size_t read_pos_{0};
     std::size_t write_pos_{0};
+    bool fail_{false};
 };
 
 } // namespace linbuf::v01

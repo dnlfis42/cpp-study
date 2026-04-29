@@ -8,22 +8,32 @@
 
 ## 버전 히스토리
 
-|        버전 | 주요 변화                                                                                  | 결과                                                                                       |
-| ----------: | :----------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------- |
-| [v01](v01/) | 기본 구현. raw I/O (bool all-or-nothing) + primitive `operator<<`/`>>` (throw)             | 베이스라인. n=4K에서 75 Gi/s, n=8K에서 81 Gi/s 피크                                        |
-| [v02](v02/) | zero-copy read API — `std::span<const std::byte>` 반환 (`read_span`, `read(n)`, `peek(n)`) | memcpy 회피. 큰 크기에서 bandwidth 수렴, DoNotOptimize 오버헤드 차이로 작은 크기 해석 주의 |
+| 버전        | 주요 변화                                                                             | 결과                                             |
+| :---------- | :------------------------------------------------------------------------------------ | :----------------------------------------------- |
+| [v01](v01/) | 기본 구현. raw I/O (bool all-or-nothing) + arithmetic `operator<<`/`>>` (error state) | n=4096: 74.8 Gi/s (L1). n≥32768: ~31.7 Gi/s (L2) |
+| [v02](v02/) | zero-copy read API: `read_span`, `read(n)`, `peek(n)` (span 반환)                     | 기존 경로 수치 동일. span API가 memcpy 생략      |
 
-각 버전 세부 내용은 해당 디렉터리 README 참고.
+## API 요약
 
-## API 요약 (공통)
+| API                                              | 역할                                            | 버전 |
+| :----------------------------------------------- | :---------------------------------------------- | :--- |
+| **operator**                                     |                                                 |      |
+| `operator bool`                                  | 오류 상태 확인                                  | v01~ |
+| `operator<<` / `operator>>`                      | 산술 타입 직렬화/역직렬화. 실패 시 `fail_` 설정 | v01~ |
+| **interface**                                    |                                                 |      |
+| `capacity()`, `size()`, `available()`, `empty()` | 상태 조회                                       | v01~ |
+| `read_ptr()`, `write_ptr()`                      | 위치 포인터                                     | v01~ |
+| `read_span()`                                    | 읽을 수 있는 영역 전체 뷰                       | v02~ |
+| `set_fail()`                                     | 오류 상태 설정                                  | v01~ |
+| `move_read_pos(n)` ,`move_write_pos(n)`          | n 바이트 위치 전진                              | v01~ |
+| `clear`                                          | 위치·오류 상태 초기화                           | v01~ |
+| `peek(byte*, n)`                                 | n 바이트 복사, 위치 이동 없음                   | v01~ |
+| `peek(n)`                                        | n 바이트 뷰, 위치 이동 없음                     | v02~ |
+| `read(byte*, n)`                                 | n 바이트 복사 + 소비                            | v01~ |
+| `read(n)`                                        | n 바이트 뷰 + 소비                              | v02~ |
+| `write(byte*, n)`                                | n 바이트 기록                                   | v01~ |
 
-- 상태: `capacity()`, `size()`, `available()`, `empty()`, `clear()`
-- zero-copy: `read_ptr()`, `write_ptr()`, `move_read_pos()`, `move_write_pos()`
-- raw I/O (bool all-or-nothing): `read(byte*, n)`, `write(byte*, n)`, `peek(byte*, n)`
-- primitive 직렬화 (실패 시 throw): `operator<<`, `operator>>` — 19종 오버로드
-- **v02 추가**: `read_span()`, `read(n)`, `peek(n)` (span 반환)
-
-## 사용자 타입 확장 패턴
+### 사용자 타입 확장 패턴
 
 비멤버 오버로드로 확장:
 
@@ -38,74 +48,107 @@ LinearBuffer& operator>>(LinearBuffer& lb, MyType& v) {
 
 ## 성능 종합
 
-환경: Intel (L1 32 KiB × 6), gcc 13.3, `-O3`, CPU 상한 **3.0 GHz 고정**, `taskset -c 2`
+| n (bytes) | 버퍼 크기 |            RawWrite |    CV |       ZeroCopyWrite |    CV | 비고           |
+| --------: | --------: | ------------------: | ----: | ------------------: | ----: | :------------- |
+|        64 |     128 B | 2.71 ns (22.0 Gi/s) | 0.41% | 2.35 ns (25.4 Gi/s) | 0.04% | microarch 지배 |
+|      4096 |     8 KiB | 51.1 ns (74.8 Gi/s) | 1.12% | 50.8 ns (75.1 Gi/s) | 1.03% | L1             |
+|     32768 |    64 KiB |  965 ns (31.6 Gi/s) | 0.30% |  965 ns (31.7 Gi/s) | 0.17% | L2             |
+|     65536 |   128 KiB | 1920 ns (31.8 Gi/s) | 0.25% | 1930 ns (31.6 Gi/s) | 0.47% | L2             |
 
-| n (bytes) | 버퍼 크기 |  RawWrite |      대역폭 | 위치        |
-| --------: | --------: | --------: | ----------: | :---------- |
-|      4096 |      8 KB |   50.7 ns |     75 Gi/s | L1          |
-|  **8192** | **16 KB** | **94 ns** | **81 Gi/s** | **L1 peak** |
-|     16384 |     32 KB |    335 ns |     46 Gi/s | L1 경계     |
-|     32768 |     64 KB |    969 ns |     31 Gi/s | L2          |
-|     65536 |    128 KB |   1979 ns |     31 Gi/s | L2          |
+v01·v02 수치 동일: span API 추가가 기존 경로에 영향 없음
 
-## 전체 발견
+## 핵심 발견
 
 ### 1. 주파수 고정이 측정 안정성의 열쇠
 
-`performance` governor만으론 부족. **boost/throttle 사이클로 동일 크기도 10~15% 편차**. 주파수 상한을 base clock 수준(3.0 GHz)으로 잠그면 CV < 1%의 극도로 안정된 측정 가능. 절대 성능은 낮아지지만 **상대 비교가 정확**.
+**관찰**
+
+`performance` governor만으로는 부족하다. boost/throttle 사이클로 동일 크기도 10~15% 편차가 발생했다.
+
+**분석**
+
+주파수 상한을 base clock 수준(3.0 GHz)으로 잠그면 CV < 1%의 안정된 측정이 가능하다. 절대 성능은 낮아지지만 상대 비교가 정확해진다.
+
+**결론**
+
+벤치마크 환경에서는 governor 설정만으로는 불충분하다. 주파수 상한 고정까지 필요하다.
 
 ### 2. 작은 크기 벤치는 microarchitectural 지배
 
-n ≤ 256 영역(1~5 ns)은 branch predictor 상태, OoO 스케줄링, turbo 변동 등에 지배됨. **개별 수치보다 "극히 작다"는 사실이 의미**. 실질 성능 평가는 n ≥ 4K 대역에서.
+**관찰**
+
+n ≤ 256 영역(1~5 ns)은 수치 편차가 크고 재현이 어렵다.
+
+**분석**
+
+branch predictor 상태, OoO 스케줄링, turbo 변동 등 microarchitectural 요인이 지배하는 구간이다. 개별 수치보다 "극히 작다"는 사실 자체가 의미를 가진다.
+
+**결론**
+
+실질 성능 평가는 n ≥ 4 KiB 대역에서 수행할 것.
 
 ### 3. 캐시 계층 전환이 수치에 선명히 보임
 
-- n=8192 (16 KB 버퍼): L1 cache-hot peak **81 Gi/s**
-- n=16384 (32 KB 버퍼): L1 (32 KB) 한계 도달 → **46 Gi/s로 반토막**
-- n ≥ 32768: L2 영역 수렴 **~31 Gi/s**
+**관찰**
 
-학습용 벤치로 **메모리 계층 구조를 실측으로 확인** 가능.
+- n = 4096 (8 KiB 버퍼): ~75 Gi/s
+- n ≥ 32768: ~31 Gi/s 수렴
+
+**분석**
+
+두 구간의 경계는 L1 → L2 전환에 해당한다. 수치 변화가 캐시 계층 구조를 실측으로 반영한다.
+
+**결론**
+
+학습용 벤치로 메모리 계층 구조를 직접 확인할 수 있다.
 
 ### 4. bool all-or-nothing이 raw I/O에 적합
 
-partial transfer(size_t 반환)를 처음 고려했지만:
+**관찰**
 
-- recv 시나리오: `recv()` 반환값으로 `move_write_pos()` — `write()` 경로 미사용
-- send 시나리오: 메시지 완결 필요 — "일부 전송"은 의미 없음
+partial transfer(size_t 반환)를 초기에 고려했으나, 실제 쓰임은 세 시나리오 모두 all-or-nothing 이었다.
+
+- recv: `recv()` 반환값으로 `move_write_pos()` 직접 처리 (`write()` 경로 미사용)
+- send: 메시지 완결 필요 — 일부 전송은 의미 없음
 - 헤더 파싱: 부족하면 `break` — 부분 peek 불필요
 
-실제 쓰임을 돌아보면 all-or-nothing이 자연스럽고, **linear와 ring이 같은 의미로 통일** 가능.
+**분석**
+
+세 경우 모두 성공/실패 이분법으로 충분하다. size_t 반환은 오히려 호출자에게 불필요한 분기를 강제한다.
+
+**결론**
+
+bool 시그니처로 통일하면 linear와 ring이 같은 의미로 맞춰진다.
+partial 처리가 필요한 시나리오가 추가되면 재검토할 것.
 
 ### 5. zero-copy read (v02)의 DoNotOptimize 함정
 
-`BM_ReadSpan`(write + span-read)이 `BM_RawWrite`(write)보다 빠르게 나옴 — 역설적. 원인: `DoNotOptimize(lb)` 전체 객체 관찰 강제 vs `DoNotOptimize(span.data())` 작은 범위 관찰. **벤치 구조가 결과에 영향** — 해석 시 DoNotOptimize 대상 범위 확인 필수.
+**관찰**
 
-### 6. operator throw vs raw bool의 역할 분리
+`BM_ReadSpan`(write + span-read)이 `BM_RawWrite`(write)보다 빠르게 측정되었다.
 
-- `operator<<`/`>>`: 프로토콜 위반 = 치명적 → throw로 빠르게 실패
-- `read`/`write`/`peek`: 가변 크기 데이터 처리 → bool로 호출자가 결정
+**분석**
 
-**같은 "실패"도 맥락에 따라 시그널링 방식이 다른 게 합리적**.
+`DoNotOptimize(lb)`는 객체 전체를 관찰 강제하지만, `DoNotOptimize(span.data())`는 포인터만 관찰한다. 벤치 구조 자체가 결과에 영향을 주었다.
 
-## 측정 방법론
+**결론**
 
-- **3.0 GHz 고정**: `cpupower frequency-set -u 3.0GHz`로 boost 차단
-- **taskset -c 2**: 단일 코어 고정, 마이그레이션 회피
-- **10 repetitions + aggregates_only**: CV로 안정성 판단
-- **CV > 5% 구간은 해석 주의**: 외부 인터럽트 혹은 캐시 경계 경합
+해석 시 DoNotOptimize 대상 범위를 반드시 확인해야 한다.
+
+### 6. operator error state가 raw I/O bool과 일관성 있음
+
+**관찰**
+
+`operator<<`/`>>`도 raw I/O와 동일하게 `fail_` 플래그로 실패를 기록한다.
+
+**분석**
+
+iostream sticky-flag 패턴과 동일하다. throw와 달리 연산을 체인하다가 마지막에 `if (!lb)` 한 번으로 확인할 수 있다.
+
+**결론**
+
+사용자 정의 오버로드도 `lb.set_fail()`으로 동일하게 통합되어 인터페이스 일관성이 유지된다.
 
 ## 미해결 / 다음 단계
 
-- **primitive `operator<<`/`>>` 벤치**: elision 때문에 신뢰 가능한 수치 확보 어려움. 이 연작에선 raw I/O만 측정
-- **v03 방향 미정**: alignas, SBO, template<N> 검토했으나 학습 밀도 대비 가치 제한적 → **`concept/cache-alignment/` 같은 짧은 실험으로 분리 예정**
-
-## 빌드/테스트
-
-```bash
-cmake --workflow --preset debug
-ctest --preset test
-
-# 벤치 (CPU 고정 + 반복)
-./script/run_linbuf_v01_bench.sh
-./script/run_linbuf_v02_bench.sh
-```
+- **primitive `operator<<`/`>>` 벤치**: elision 때문에 신뢰 가능한 수치 확보 어려움.
