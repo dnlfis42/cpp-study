@@ -1,89 +1,75 @@
-# Object Pool v02
+# v02
 
-## v01 대비 추가
-
-**RAII Handle**: `std::unique_ptr<T, Deleter>` 타입 별칭. `acquire_unique()`가 소멸 시 자동으로 `release` 호출하는 Handle 반환.
+## 변경 사항
 
 ```cpp
-{
-    auto h = pool.acquire_unique();
-    *h = 42;
-    // ...
-} // 스코프 이탈 → Handle 소멸 → release 자동 호출
-```
-
-Raw API (`acquire`/`release`)는 **그대로 병행 제공** — hot path 최적화 vs 안전성 선택권.
-
-## 설계 결정
-
-### Deleter는 pool 포인터를 멤버로
-
-```cpp
+// 추가
 class Deleter {
 public:
-    Deleter() noexcept : pool_{nullptr} {}
-    explicit Deleter(ObjectPool* pool) noexcept : pool_{pool} {}
-    void operator()(T* obj) const noexcept {
-        if (pool_ != nullptr && obj != nullptr) pool_->release(obj);
-    }
-private:
-    ObjectPool* pool_;
+    Deleter() noexcept;
+    explicit Deleter(ObjectPool* pool) noexcept;
+    void operator()(T* obj) const noexcept;
 };
+using Handle = std::unique_ptr<T, Deleter>;
+
+[[nodiscard]]
+Handle acquire_unique() noexcept;
 ```
 
-- **`pool_`이 nullptr 기본**: `Handle{}` 기본 생성자 / acquire 실패 시 빈 Handle 케이스 지원
-- **포인터 크기(8B)**: `sizeof(Handle) = sizeof(T*) + sizeof(Deleter) = 16B` — `shared_ptr`(16~32B)과 유사하지만 atomic ref count 없음
+## 설계 의도
 
-### Handle이 outstanding인 동안 pool move 금지
+### RAII Handle
 
-```cpp
-auto h = pool.acquire_unique();
-auto p2 = std::move(pool);  // ⚠ h 내부 Deleter의 pool_ → 원래 주소(dangling)
-```
+`acquire_unique()`가 반환하는 Handle은 스코프 이탈 시 자동으로 `release`를 호출한다. release 누락으로 인한 풀 고갈을 구조적으로 차단한다.
 
-`std::unique_ptr`의 본질적 한계. 사용자 책임으로 남김 (문서 계약). 런타임 체크(pool ID 등)는 **실무 관용에 없음** — 비용 0 원칙.
+### Deleter 설계
 
-### Raw + Handle 병행
+`Deleter`가 `ObjectPool*`를 멤버로 보유. Handle이 소멸될 때 생성된 풀로 반납된다. `pool_` 기본값 `nullptr`는 acquire 실패 시 빈 Handle을 안전하게 처리한다.
 
-- Raw: hot path 최소 오버헤드 (~2.4ns)
-- Handle: 안전성 (release 누락 구조적 차단)
-- 둘 다 제공하여 **사용자가 상황별 선택**
+`sizeof(Handle) = sizeof(T*) + sizeof(Deleter) = 16 B`.
 
-v04에서 Raw API를 private로 내려 Handle 전용으로 좁히는 건 별개 설계 결정.
+### Raw API 병행 유지
 
-## API
+v02는 Raw API(`acquire`/`release`)를 그대로 제공한다. Hot path 극한 최적화가 필요한 경우 Raw를, 일반적인 경우 Handle을 선택한다.
 
-| 카테고리     | 함수                                                        |
-| :----------- | :---------------------------------------------------------- |
-| 상태         | `capacity()`, `available()`, `in_use()`                     |
-| Raw          | `acquire() -> T*`, `release(T*)`                            |
-| RAII         | `acquire_unique() -> Handle`                                |
-| Type aliases | `Deleter` (nested class), `Handle = unique_ptr<T, Deleter>` |
+### 이동 불가 (non-movable)
 
-## 벤치마크
+v01과 동일한 이유에 더해, Handle outstanding 중 이동 시 `Deleter::pool_`이 dangling이 된다. 컴파일 타임에 "핸들 없음"을 보장할 수 없으므로 move를 `= delete`로 차단한다.
 
-환경: Intel, gcc 13.3, `-O3`, 상한 3.0 GHz 고정, `taskset -c 2`
+## 측정
 
-- **BM_Pool_Raw**: v01과 동일 경로 — 비교 기준
-- **BM_Pool_Handle**: `acquire_unique()` + Handle 소멸 → Deleter 호출
+### Raw vs Handle 오버헤드
 
-스크립트: [../script/run_objpool_v02_bench.sh](../script/run_objpool_v02_bench.sh)
+`acquire/release` 단일 반복. hot loop.
 
-### 실측
+**측정 결과**
 
-| 벤치                                 | Time (mean) |            vs Raw |
-| :----------------------------------- | ----------: | ----------------: |
-| Pool Raw (cap 64/1024/16384 동일)    |     2.44 ns |              기준 |
-| Pool Handle (cap 64/1024/16384 동일) |     4.15 ns | **+1.7 ns (70%)** |
+| 벤치              |    mean |    CV |
+| :---------------- | ------: | ----: |
+| BM_ObjPool_Raw    | 2.45 ns | 0.11% |
+| BM_ObjPool_Handle | 4.13 ns | 0.25% |
 
-CV < 0.4%, 극도로 안정. capacity 무관.
+**분석**
 
-### 관찰
+Handle 오버헤드 +1.68 ns (+69%): Deleter 생성/소멸 + `DoNotOptimize`가 `16 B` Handle 전체를 관찰 강제하는 비용.
 
-- **Handle 오버헤드 ~1.7ns (70% 상대 증가)**: Deleter 생성/소멸 + pool\_ nullptr 체크 + `DoNotOptimize(h)`가 16B 객체 관찰 강제하는 비용 포함
-- **절대값은 여전히 작음**: new/delete(21ns) 대비 Handle(4.15ns)도 **5× 빠름**
-- **실무 권장**: 대부분 `acquire_unique()` — release 누락 구조적 차단의 가치가 1.7ns보다 크다. Hot path 극한에서만 Raw
+Raw(2.45 ns)는 v01(2.35 ns) 대비 오차 범위 수준. 구현 동일.
 
-## 다음 버전 힌트
+**결론**
 
-- **v03**: free list 자료구조를 **링크드 리스트**(`Node { T; size_t next; }`)로 — 구조적 순수성 실험
++1.68 ns로 release 누락 구조적 차단. new/delete(20.0 ns) 대비 Handle도 **4.8× 빠름**.
+
+## 개선
+
+`unique_ptr<T, Deleter>` Handle로 release 누락 구조적 차단. 오버헤드 `+1.68 ns`. new/delete 대비 Handle도 **4.8× 빠름** (`4.13 ns`).
+
+## 트레이드오프
+
+`+1.68 ns` (+69%). `sizeof(Handle)` = `16 B`.
+
+## 과제
+
+- `release(T*)` 내 `reinterpret_cast<Node*>`: pointer-interconvertible 조건 위반
+- Raw API 병행 제공으로 release 누락 경로 여전히 존재
+- T가 DefaultConstructible이어야 함
+- 단일 스레드 전용

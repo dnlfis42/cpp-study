@@ -8,91 +8,95 @@
 
 namespace objpool::v04 {
 
-// v03와 storage 구조 동일 (Node + head_free_ 링크드 리스트).
-// 변경점: Raw API(acquire/release)를 private로 내림 — Handle만 공개.
-// → 메모리 안전: release 누락 불가능, cross-pool 반환 불가능.
 template <typename T>
 class ObjectPool {
+private:
+    struct Node {
+        T data;
+        Node* next;
+    };
+
 public:
     class Deleter {
     public:
-        Deleter() noexcept : pool_{nullptr} {}
-        explicit Deleter(ObjectPool* pool) noexcept : pool_{pool} {}
+        Deleter() noexcept : pool_{nullptr}, node_{nullptr} {}
+        Deleter(ObjectPool* pool, Node* node) noexcept
+            : pool_{pool}, node_{node} {}
 
-        void operator()(T* obj) const noexcept {
-            if (pool_ != nullptr && obj != nullptr) {
-                pool_->release(obj);
-            }
+    public:
+        void operator()(T*) const noexcept {
+            assert(pool_ != nullptr);
+            pool_->release(node_);
         }
 
     private:
         ObjectPool* pool_;
+        Node* node_;
     };
 
     using Handle = std::unique_ptr<T, Deleter>;
 
 public:
-    explicit ObjectPool(std::size_t capacity)
-        : storage_(capacity), head_free_{capacity == 0 ? SENTINEL : 0},
-          available_{capacity} {
-        for (std::size_t i = 0; i + 1 < capacity; ++i) {
-            storage_[i].next = i + 1;
-        }
-        if (capacity > 0) {
-            storage_[capacity - 1].next = SENTINEL;
-        }
+    explicit ObjectPool(std::size_t chunk_size = 64)
+        : head_free_{nullptr}, chunk_size_{chunk_size}, capacity_{0},
+          available_{0} {
+        assert(chunk_size > 0);
     }
-    ~ObjectPool() = default;
 
     ObjectPool(const ObjectPool&) = delete;
     ObjectPool& operator=(const ObjectPool&) = delete;
-    ObjectPool(ObjectPool&&) noexcept = default;
-    ObjectPool& operator=(ObjectPool&&) noexcept = default;
+    ObjectPool(ObjectPool&&) = delete;
+    ObjectPool& operator=(ObjectPool&&) = delete;
 
-public: // 상태
-    std::size_t capacity() const noexcept { return storage_.size(); }
+public:
+    std::size_t capacity() const noexcept { return capacity_; }
     std::size_t available() const noexcept { return available_; }
-    std::size_t in_use() const noexcept { return capacity() - available_; }
+    std::size_t in_use() const noexcept { return capacity_ - available_; }
+    std::size_t chunk_size() const noexcept { return chunk_size_; }
 
-public: // 획득 (유일한 경로)
-    // 실패 시 빈 Handle 반환.
-    Handle acquire() noexcept { return Handle{acquire_raw(), Deleter{this}}; }
-
-private: // 중첩 타입
-    struct Node {
-        T data;
-        std::size_t next;
-    };
-
-    static constexpr std::size_t SENTINEL = std::size_t(-1);
-
-private: // Raw — 외부 노출 금지. Deleter만 호출 가능.
-    T* acquire_raw() noexcept {
-        if (head_free_ == SENTINEL) {
-            return nullptr;
+public:
+    [[nodiscard]]
+    Handle acquire() {
+        if (head_free_ == nullptr) {
+            grow();
         }
-        const std::size_t idx = head_free_;
-        head_free_ = storage_[idx].next;
+
+        Node* node = head_free_;
+        head_free_ = node->next;
         --available_;
-        return &storage_[idx].data;
+
+        return Handle{&node->data, Deleter{this, node}};
     }
 
-    void release(T* obj) noexcept {
-        assert(obj != nullptr);
-        Node* node = reinterpret_cast<Node*>(obj);
-        const std::size_t idx =
-            static_cast<std::size_t>(node - storage_.data());
-        assert(idx < storage_.size());
-        assert(available_ < storage_.size());
+private:
+    void release(Node* node) noexcept {
+        assert(node != nullptr);
 
-        storage_[idx].next = head_free_;
-        head_free_ = idx;
+        node->next = head_free_;
+        head_free_ = node;
         ++available_;
     }
 
-private: // 멤버
-    std::vector<Node> storage_;
-    std::size_t head_free_;
+    void grow() {
+        auto new_chunk = std::make_unique<Node[]>(chunk_size_);
+
+        for (std::size_t i = 0; i + 1 < chunk_size_; ++i) {
+            new_chunk[i].next = &new_chunk[i + 1];
+        }
+        new_chunk[chunk_size_ - 1].next = head_free_;
+
+        head_free_ = &new_chunk[0];
+        capacity_ += chunk_size_;
+        available_ += chunk_size_;
+
+        chunks_.push_back(std::move(new_chunk));
+    }
+
+private:
+    std::vector<std::unique_ptr<Node[]>> chunks_;
+    Node* head_free_;
+    std::size_t chunk_size_;
+    std::size_t capacity_;
     std::size_t available_;
 };
 

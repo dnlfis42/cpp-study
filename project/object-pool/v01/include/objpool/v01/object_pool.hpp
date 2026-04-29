@@ -19,33 +19,39 @@ public:
 
     ObjectPool(const ObjectPool&) = delete;
     ObjectPool& operator=(const ObjectPool&) = delete;
-    ObjectPool(ObjectPool&&) noexcept = default;
-    ObjectPool& operator=(ObjectPool&&) noexcept = default;
+    ObjectPool(ObjectPool&&) = delete;
+    ObjectPool& operator=(ObjectPool&&) = delete;
 
-public: // 상태
+public:
     std::size_t capacity() const noexcept { return storage_.size(); }
     std::size_t available() const noexcept { return free_list_.size(); }
     std::size_t in_use() const noexcept { return capacity() - available(); }
 
-public: // 획득/해제
+public:
+    [[nodiscard]]
     T* acquire() noexcept {
         if (free_list_.empty()) {
             return nullptr;
         }
+
         const std::size_t idx = free_list_.back();
         free_list_.pop_back();
+
         return &storage_[idx];
     }
 
     void release(T* obj) noexcept {
         assert(obj != nullptr);
+
         const std::size_t idx = static_cast<std::size_t>(obj - storage_.data());
+
         assert(idx < storage_.size());
         assert(free_list_.size() < storage_.size());
+
         free_list_.push_back(idx);
     }
 
-private: // 멤버
+private:
     std::vector<T> storage_;
     std::vector<std::size_t> free_list_;
 };

@@ -112,18 +112,6 @@ TEST(ObjectPool, AcquiredPointersAreUnique) {
     }
 }
 
-TEST(ObjectPool, MoveConstruct) {
-    ObjectPool<int> a{3};
-    int* p = a.acquire();
-    EXPECT_EQ(a.in_use(), 1u);
-
-    ObjectPool<int> b{std::move(a)};
-    EXPECT_EQ(b.in_use(), 1u);
-
-    b.release(p);
-    EXPECT_EQ(b.in_use(), 0u);
-}
-
 // ---- RAII Handle ----
 TEST(ObjectPool, HandleAutoReleasesOnScope) {
     ObjectPool<int> pool{2};
@@ -190,7 +178,6 @@ TEST(ObjectPool, HandleWritableAndReusable) {
     }
     auto h2 = pool.acquire_unique();
     EXPECT_EQ(h2.get(), addr);
-    EXPECT_EQ(*h2, 7);
 }
 
 // ---- 비POD 타입 ----

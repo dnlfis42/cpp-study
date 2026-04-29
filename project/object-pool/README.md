@@ -1,126 +1,77 @@
 # object-pool
 
-고정/가변 크기 객체 풀. `new`/`delete` 반복 비용을 제거하고 RAII로 자원 안전성 확보.
+`new`/`delete` 반복 비용을 제거하는 고정/가변 크기 객체 풀. free list 자료구조 진화와 RAII Handle로 성능과 자원 안전성을 동시에 확보한다.
 
-- **free list 기반**: 빈 슬롯 추적 자료구조 — vector 스택 → 인덱스 링크드 리스트 → 포인터 연결 Node 진화
-- **Handle (RAII)**: `std::unique_ptr<T, Deleter>`로 release 누락 구조적 차단
-- **가변 크기**: 청크 기반으로 포인터 안정성 유지한 채 성장
-
-**학습 목표**:
-
-- new/delete 대비 풀링 이득 체감
-- free list 자료구조 탐색 (벡터 스택 → 인덱스 링크드 리스트 → 포인터 연결)
-- RAII Handle로 자원 안전성
-- 청크 기반 가변 구조 + 포인터 안정성
-
-## 버전 히스토리
-
-|        버전 | 주요 변화                                                                                      | 결과                                                                                                           |
-| ----------: | :--------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------- |
-| [v01](v01/) | `vector<T>` + `vector<size_t>` 스택 free list, Raw API                                         | 베이스라인                                                                                                     |
-| [v02](v02/) | RAII Handle (`unique_ptr<T, Deleter>`) + `acquire_unique()` 추가                               | release 누락 구조적 차단. Handle 오버헤드 ~0.5ns (사실상 공짜)                                                 |
-| [v03](v03/) | free list를 **인덱스 링크드 리스트**로 (`Node { T data; size_t next; }`)                       | 구조적 순수성, cache locality 이득. 단, sizeof(Node) 증가로 hot path 느려질 수 있음                            |
-| [v04](v04/) | Raw API를 private로 — **Handle 전용 공개**. `acquire()`가 Handle 반환                          | 타입 시스템으로 release 누락/cross-pool 반환 영구 차단. 성능은 v03 Handle과 동등                               |
-| [v05](v05/) | **청크 기반 가변 풀** — `Node { T; Node* next; }` 포인터 연결. lazy 초기화, 자동 성장          | 초기 capacity 예측 불필요. 포인터 안정성(성장 중에도 기존 주소 불변). 인덱스→포인터 전환으로 v04보다 빠를 수도 |
-| [v06](v06/) | **MemoryPool v03 slab 백엔드** — 자체 `Node[]` + free list 제거, placement new + explicit dtor | 교차 검증: slab backend overhead ≈ 0. non-default-constructible T 지원. Node 구조체 제거                       |
+- **Handle (RAII)**: `unique_ptr<T, Deleter>`로 release 누락 구조적 차단
+- **free list 진화**: vector 스택 -> 인덱스 링크드 리스트 -> 포인터 연결로 hot path 최적화 탐색
+- **청크 기반 가변 크기**: grow 중에도 기존 포인터 안정성 유지, capacity 예측 불필요
+- **T 생명주기 제어**: placement new + explicit dtor, non-default-constructible T 지원
 
 ## 성능 종합
 
-chunk_size = 64 기준 (hot loop, 같은 Item):
+hot loop, `char buf[64]`, `chunk_size = 64`, i7-9750H, Release:
 
-|         | API    | Storage                  | Time (ns) | 비고            |
-| ------: | :----- | :----------------------- | --------: | :-------------- |
-| **v01** | Raw    | `vec<T>` + `vec<size_t>` |      2.42 | 기준            |
-| **v02** | Raw    | 동일                     |      2.44 | 구현 동일       |
-| **v02** | Handle | 동일                     |      4.15 | Deleter +1.7ns  |
-| **v03** | Raw    | `vec<Node>` + idx        |      3.02 | Node 구조 +24%  |
-| **v03** | Handle | 동일                     |      4.90 | Raw + Deleter   |
-| **v04** | Handle | 동일                     |      4.86 | API 축소 비용 0 |
-| **v05** | Handle | **chunk<Node>** + `ptr`  |  **4.48** | **v04보다 -8%** |
-| **v06** | Handle | **MemoryPool v03 slab**  |  **4.63** | v05 대비 +3%    |
+| 조건       |      mean |      CV | 비고                  |
+| :--------- | --------: | ------: | :-------------------- |
+| new/delete | `20.0 ns` | `1.50%` | 베이스라인            |
+| v01 Raw    | `2.35 ns` | `0.40%` | 기준                  |
+| v02 Raw    | `2.44 ns` | `0.11%` | 구현 동일             |
+| v02 Handle | `4.16 ns` | `0.19%` | Deleter +1.7 ns       |
+| v03 Handle | `5.53 ns` | `0.23%` | Node 구조 +33%        |
+| v04 Handle | `4.50 ns` | `0.02%` | 포인터 free list -19% |
+| v05 Handle | `4.67 ns` | `0.18%` | mempool 위임 +4%      |
 
-베이스라인: **new/delete = 21 ns**. 모든 풀 버전이 약 4~8× 빠름.
+## 버전
 
-## 전체 발견
+### v01
 
-### 1. Handle 오버헤드는 실무적으로 공짜
+**개선**: vector 스택 free list + LIFO로 new/delete 대비 **8.5× 빠름** (`2.35 ns` vs `20.0 ns`).
 
-**+1.7ns / +70% 상대 증가**지만 절대값 미미 (hot path도 4ns 수준). release 누락 방지라는 **영구적 안전성**과 맞바꾸면 합리적.
+**과제**:
 
-### 2. 인덱스 vs 포인터 free list
+- Raw API release 누락을 `[[nodiscard]]`로 경고하지만 컴파일 타임 차단은 아님
 
-같은 링크드 리스트 구현이라도:
+### v02
 
-- 인덱스(v03/v04): `base + idx * sizeof(Node)` — 곱셈 + 덧셈
-- 포인터(v05): 직접 역참조 — 1 cycle 절약
+**개선**: `unique_ptr<T, Deleter>` Handle로 release 누락 구조적 차단. 오버헤드 `+1.7 ns`. new/delete 대비 Handle도 **4.8× 빠름** (`4.16 ns`).
 
-hot path에서 **~7~8% 일관되게 빠름**. v05가 v04보다 빠른 주요 원인.
+**트레이드오프**: `+1.7 ns` (+69%). `sizeof(Handle)` = `16 B`.
 
-### 3. Node 구조 도입의 비용
+**과제**:
 
-v02 → v03 전환에서 **Raw path가 24% 느려짐**. 원인 분해:
+- `release(T*)` 내 `reinterpret_cast<Node*>`: pointer-interconvertible 조건 위반
+- Raw API 병행 제공으로 release 누락 경로 여전히 존재
 
-- `sizeof(Node)` 증가 → cache stride 증가 (이 벤치에선 LIFO라 크게 안 보임)
-- 간접 참조 한 단계 추가 (`storage_[idx].next` / `.data`)
-- 명시적 `available_` 카운터 store
+### v03
 
-**교훈**: "구조적 순수성"은 공짜가 아니다. 자료구조 선택은 성능 측정과 짝.
+**개선**: Deleter에 `Node*` 직접 저장, `reinterpret_cast` 제거. Raw API 제거. Handle이 유일한 공개 경로. `acquire_unique()` -> `acquire()`.
 
-### 4. Raw API private화(v04) 비용 제로
+**트레이드오프**: `sizeof(Handle)` `16 B` -> `24 B`. `+1.37 ns` (+33% vs v02).
 
-API 표면 축소로 안전성 획득. 성능은 **v03 Handle과 동등**. gcc의 인라인 결정에 public/private 여부가 영향 없음 확인.
+**과제**:
 
-### 5. 청크 기반 가변 풀의 의외성
+- 인덱스 free list: `base + idx * sizeof(Node)` 곱셈 비용
+- T DefaultConstructible 요구
+- 고정 크기
 
-가변성을 위해 추가 자료구조(`vector<unique_ptr<Node[]>>`) 도입했지만 **hot path엔 미반영**. 한 번 grow 후엔 `head_free_` 포인터만 사용 → **고정 풀보다 오히려 빠를 수 있음**. 포인터 안정성까지 포함해 **실무 기본값으로 적합**.
+### v04
 
-### 6. Cross-pool 포인터 반환 — 실무는 assert
+**개선**: `Node* next` 포인터 free list로 곱셈 제거. v03 대비 `-1.03 ns` (-19%). 청크 기반 grow로 capacity 예측 불필요. 기존 포인터 안정성 유지.
 
-런타임 체크(pool ID 태그) 가능하지만 STL/allocator 관용은 **assert + 문서 계약**. C++ "don't pay for what you don't use" 일치. 디버그에서 잡히면 충분.
+**트레이드오프**: T DefaultConstructible 요구 (`grow()` 시 `Node[]` default-construct). `acquire()` `noexcept` 제거.
 
-### 7. 스킵한 intrusive union (원본 v05)
+**과제**:
 
-`union Slot { T value; size_t next; }`로 메모리 공유 + placement new 생애주기 관리. 메모리 절약이 가능하지만:
+- non-default-constructible T 지원 불가
+- `grow()` 시 미사용 슬롯도 T 일괄 생성. 소멸자 비호출로 생명주기 직접 제어 불가
 
-- hot path ~20% 느림 (원본 회고)
-- TCP 서버 맥락 T는 보통 커서 이득 희석
-- 복잡도 대비 실익 적음
+### v05
 
-이 연작에선 생략. 학습 가치는 `concept/placement-new/` 같은 별도 짧은 실험으로 담당 예정.
+**개선**: placement new + explicit dtor로 T 생명주기 직접 제어. Non-default-constructible T 지원. `sizeof(Handle)` `24 B` -> `16 B`. mempool 위임으로 free list 구현 제거.
 
-### 8. MemoryPool v03 slab은 실용적 backend (v06 교차 검증)
+**트레이드오프**: trivial T hot loop 기준 `+0.17 ns` (+4% vs v04). `sizeof(T)` <= `1024 B` 제한 (mempool v03).
 
-v05(`Node[]` + 자체 free list) vs v06(MemoryPool v03 slab 위임): **+0.14 ns (+3%)**.
+**과제**:
 
-원인은 slab 메커니즘이 아닌 함수 호출 경계 — steady-state hot path는 둘 다 free list pop 1회. MemoryPool을 object-pool의 storage backend로 쓰는 건 **성능 손해 없이** 메모리 관리 위임 가능함을 실측으로 확인.
-
-부수 이득: non-default-constructible T 지원, `Node` 구조체 제거로 코드 단순화.
-
-## 측정 방법론
-
-- **hot loop만으론 부족**: `NoWarmup` vs `Warmup` 실측 결과 동일 — LIFO가 같은 슬롯 반복 참조라 warmup 효과 희석. **현실 워크로드 측정엔 다중 holding + 교체 패턴이 필요**
-- **new/delete 베이스라인**: 단일 스레드에선 glibc malloc도 이미 빠름. 멀티스레드 락 경합/단편화/커널 호출 회피 같은 풀의 **진짜 이점은 마이크로벤치로 측정 불가**
-- **모든 버전 동일 출력 포맷** (`BM_Pool_*_vNN<Cap>`): 버전별/사이즈별 대조 즉시 가능
-- **일관성 원칙**: 버전당 변경점 하나 — v01→v02 (Handle), v02→v03 (Node), v03→v04 (API), v04→v05 (청크+가변). 원인/결과 분리
-
-## 미해결 / 다음 단계
-
-- **Multi-in-flight 벤치 미작성**: 여러 Handle 동시 보유 + 교체 패턴에서 cache locality 측정 기회
-- **멀티스레드**: 현재 모든 버전 단일 스레드. `std::atomic` + memory order로 SPSC 풀은 별도 프로젝트(`cpp-spsc-queue`)에서
-- **intrusive union 실험**: `concept/placement-new/` 같은 짧은 예제로 분리 학습 예정
-- ~~**memory-pool backing**~~ → v06에서 완료. MemoryPool v03 slab 교차 검증 결과: backend overhead ≈ 0
-
-## 빌드/테스트
-
-```bash
-cmake --workflow --preset debug
-ctest --preset test
-
-# 버전별 벤치
-./script/run_objpool_v01_bench.sh
-./script/run_objpool_v02_bench.sh
-./script/run_objpool_v03_bench.sh
-./script/run_objpool_v04_bench.sh
-./script/run_objpool_v05_bench.sh
-./script/run_objpool_v06_bench.sh
-```
+- reset 함수 template non-type parameter 미구현: 소멸자 비호출 + 상태 초기화 결합
+- 단일 스레드 전용

@@ -4,4 +4,6 @@ add_subdirectory(v02)
 add_subdirectory(v03)
 add_subdirectory(v04)
 add_subdirectory(v05)
-add_subdirectory(v06)
+
+# 통합 벤치
+add_subdirectory(bench)

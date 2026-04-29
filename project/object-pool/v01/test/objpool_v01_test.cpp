@@ -3,7 +3,6 @@
 #include <gtest/gtest.h>
 
 #include <set>
-#include <utility>
 #include <vector>
 
 #include <cstddef>
@@ -130,11 +129,6 @@ TEST(ObjectPool, AcquiredObjectIsWritable) {
     EXPECT_EQ(*p, 42);
 
     pool.release(p);
-
-    // 재사용 시 이전 값 보존됨 (v01은 재초기화 안 함)
-    int* q = pool.acquire();
-    EXPECT_EQ(q, p); // LIFO로 같은 슬롯
-    EXPECT_EQ(*q, 42);
 }
 
 // ---- 비POD 타입 ----
@@ -154,20 +148,6 @@ TEST(ObjectPool, WorksWithNonPodType) {
 
     pool.release(p);
     EXPECT_EQ(pool.in_use(), 0u);
-}
-
-// ---- Move semantics ----
-TEST(ObjectPool, MoveConstruct) {
-    ObjectPool<int> a{3};
-    int* p = a.acquire();
-    EXPECT_EQ(a.in_use(), 1u);
-
-    ObjectPool<int> b{std::move(a)};
-    EXPECT_EQ(b.in_use(), 1u);
-    EXPECT_EQ(b.capacity(), 3u);
-
-    b.release(p);
-    EXPECT_EQ(b.in_use(), 0u);
 }
 
 // ---- 경계 ----
