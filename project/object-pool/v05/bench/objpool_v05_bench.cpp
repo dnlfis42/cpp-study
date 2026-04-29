@@ -8,7 +8,7 @@ struct Item {
 };
 } // namespace
 
-static void BM_ObjPool_Handle(benchmark::State& state) {
+static void BM_Handle(benchmark::State& state) {
     objpool::v05::ObjectPool<Item> pool;
 
     for (auto _ : state) {
@@ -16,6 +16,6 @@ static void BM_ObjPool_Handle(benchmark::State& state) {
         benchmark::DoNotOptimize(h);
     }
 }
-BENCHMARK(BM_ObjPool_Handle);
+BENCHMARK(BM_Handle);
 
 BENCHMARK_MAIN();

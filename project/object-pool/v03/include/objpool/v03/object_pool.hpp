@@ -10,9 +10,9 @@ namespace objpool::v03 {
 
 template <typename T>
 class ObjectPool {
-    static constexpr std::size_t SENTINEL = std::size_t(-1);
-
 private:
+    static constexpr std::size_t sentinel = std::size_t(-1);
+
     struct Node {
         T data;
         std::size_t next;
@@ -41,13 +41,13 @@ public:
 
 public:
     explicit ObjectPool(std::size_t capacity)
-        : storage_(capacity), head_free_{capacity == 0 ? SENTINEL : 0},
+        : storage_(capacity), head_free_{capacity == 0 ? sentinel : 0},
           available_{capacity} {
         for (std::size_t i = 0; i + 1 < capacity; ++i) {
             storage_[i].next = i + 1;
         }
         if (capacity > 0) {
-            storage_[capacity - 1].next = SENTINEL;
+            storage_[capacity - 1].next = sentinel;
         }
     }
 
@@ -63,7 +63,7 @@ public:
 
     [[nodiscard]]
     Handle acquire() noexcept {
-        if (head_free_ == SENTINEL) {
+        if (head_free_ == sentinel) {
             return Handle{};
         }
 

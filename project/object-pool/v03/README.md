@@ -26,7 +26,7 @@ Handle acquire() noexcept;
 
 ### UB 제거
 
-v02의 `release(T* obj)`는 `reinterpret_cast<Node*>(obj)`로 T*에서 Node*를 역산했다. `data`가 Node의 첫 멤버라 표준-레이아웃 T에서는 동작하지만, 엄밀히는 pointer-interconvertible 조건 위반이다.
+`vector<Node>`로 전환 시 Deleter가 `T*`만 보유하는 naive 설계라면 `release()`에서 `reinterpret_cast<Node*>(obj)`로 Node\*를 역산해야 한다. `data`가 Node의 첫 멤버라 표준-레이아웃 T에서는 동작하지만, 엄밀히는 pointer-interconvertible 조건 위반이다.
 
 Deleter에 `Node*`를 직접 저장하면 `acquire()` 시점에 이미 Node 주소를 알고 있으므로 역산이 불필요하다. `release(Node* node)`는 포인터 산술만으로 index를 복원한다.
 
@@ -48,10 +48,10 @@ Raw API가 사라지면서 이름 충돌이 없어졌다. `acquire_unique()` -> 
 
 **측정 결과**
 
-| 벤치          |    mean |    CV |
-| :------------ | ------: | ----: |
-| BM_v02_Handle | 4.16 ns | 0.19% |
-| BM_v03_Handle | 5.53 ns | 0.23% |
+| 벤치            |    mean |    CV |
+| :-------------- | ------: | ----: |
+| `BM_v02_Handle` | 4.16 ns | 0.19% |
+| `BM_v03_Handle` | 5.53 ns | 0.23% |
 
 **분석**
 

@@ -10,7 +10,7 @@ struct Item {
 };
 } // namespace
 
-static void BM_ObjPool(benchmark::State& state) {
+static void BM_Acquire_Raw(benchmark::State& state) {
     ObjectPool<Item> pool{64};
 
     for (auto _ : state) {
@@ -19,15 +19,15 @@ static void BM_ObjPool(benchmark::State& state) {
         pool.release(p);
     }
 }
-BENCHMARK(BM_ObjPool);
+BENCHMARK(BM_Acquire_Raw);
 
-static void BM_NewDelete(benchmark::State& state) {
+static void BM_Acquire_NewDelete(benchmark::State& state) {
     for (auto _ : state) {
         Item* p = new Item;
         benchmark::DoNotOptimize(p);
         delete p;
     }
 }
-BENCHMARK(BM_NewDelete);
+BENCHMARK(BM_Acquire_NewDelete);
 
 BENCHMARK_MAIN();

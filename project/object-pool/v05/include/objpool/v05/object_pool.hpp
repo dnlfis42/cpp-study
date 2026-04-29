@@ -16,9 +16,6 @@ class ObjectPool {
         sizeof(T) <= mempool::v03::MemoryPool::kMaxSize,
         "T too large for MemoryPool v03 (max 1024 bytes)"
     );
-    static_assert(
-        alignof(T) <= sizeof(T), "T alignment exceeds slot alignment guarantee"
-    );
 
 public:
     class Deleter {

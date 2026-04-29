@@ -44,10 +44,10 @@ v01과 동일한 이유에 더해, Handle outstanding 중 이동 시 `Deleter::p
 
 **측정 결과**
 
-| 벤치              |    mean |    CV |
-| :---------------- | ------: | ----: |
-| BM_ObjPool_Raw    | 2.45 ns | 0.11% |
-| BM_ObjPool_Handle | 4.13 ns | 0.25% |
+| 벤치        |    mean |    CV |
+| :---------- | ------: | ----: |
+| `BM_Raw`    | 2.45 ns | 0.11% |
+| `BM_Handle` | 4.13 ns | 0.25% |
 
 **분석**
 
@@ -69,7 +69,6 @@ Raw(2.45 ns)는 v01(2.35 ns) 대비 오차 범위 수준. 구현 동일.
 
 ## 과제
 
-- `release(T*)` 내 `reinterpret_cast<Node*>`: pointer-interconvertible 조건 위반
 - Raw API 병행 제공으로 release 누락 경로 여전히 존재
 - T가 DefaultConstructible이어야 함
 - 단일 스레드 전용

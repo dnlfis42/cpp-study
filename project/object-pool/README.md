@@ -39,7 +39,6 @@ hot loop, `char buf[64]`, `chunk_size = 64`, i7-9750H, Release:
 
 **과제**:
 
-- `release(T*)` 내 `reinterpret_cast<Node*>`: pointer-interconvertible 조건 위반
 - Raw API 병행 제공으로 release 누락 경로 여전히 존재
 
 ### v03
