@@ -1,4 +1,4 @@
-#include "shandle/v01/shared_handle.hpp"
+#include "shandle/v02/shared_handle.hpp"
 
 #include <benchmark/benchmark.h>
 
@@ -6,11 +6,12 @@
 #include <thread>
 #include <utility>
 
-using shandle::v01::make_handle;
+using shandle::v02::IntrusiveBase;
+using shandle::v02::make_handle;
 
 namespace {
 
-struct Item {
+struct Item : IntrusiveBase {
     char buf[64];
 };
 
@@ -71,7 +72,6 @@ static void BM_Make_SharedHandle(benchmark::State& state) {
 BENCHMARK(BM_Make_SharedHandle);
 
 static void BM_Copy_SharedPtr_Atomic(benchmark::State& state) {
-    // pthread 생성 -> __libc_single_threaded = 0
     std::thread t([] {});
     t.join();
 

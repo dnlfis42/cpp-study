@@ -54,11 +54,58 @@ class SharedHandle {
 
 **분석**
 
-**복사**: `std::shared_ptr`은 glibc의 `__libc_single_threaded` 플래그를 런타임에 확인해 단일 스레드 환경에서 refcount 조작을 non-atomic으로 교체한다(`addl` without `lock`). `SharedHandle`은 항상 `lock addl`을 사용하므로 이 조건에서 2× 느리다. atomic 경로(`pthread_create` 이후)에서는 `shared_ptr`이 `lock xadd`(반환값 필요), `SharedHandle`이 `lock addl`(반환값 불필요)을 사용해 `SharedHandle`이 `37%` 빠르다.
+**복사**
 
-**이동**: `shared_ptr`은 `ptr_` + `ctrl_` 두 포인터를 128비트 SIMD 한 번으로 탈취한다. `SharedHandle`은 포인터 하나지만 `release()` 안의 `if (!ctrl_)` 분기를 컴파일러가 제거하지 못해 루프당 명령어가 더 많다.
+```asm
+; shared_ptr (single-threaded 경로)
+b6d0:  addl $0x1, 0x8(%rax)        ; non-atomic increment
 
-**make**: `SharedHandle` 제어 블록이 68 B로 `shared_ptr`의 80 B보다 작지만, 소멸 시 `lock subl`(atomic) vs non-atomic 감소 차이가 할당 크기 이점을 상쇄한다.
+; shared_ptr (atomic 경로)
+b6e5:  lock xadd %eax, (%rdx)      ; fetch_add, 이전 값 반환
+
+; SharedHandle
+b40f:  lock addl $0x1, (%rbx)      ; fetch_add, 반환값 불필요
+```
+
+`shared_ptr`은 런타임에 `__libc_single_threaded` 플래그를 확인해 단일 스레드 환경에서 `lock` 없는 `addl`로 교체한다. `SharedHandle`은 이 최적화가 없어 항상 `lock addl`을 사용하므로 단일 스레드 조건에서 2× 느리다. atomic 경로에서는 `shared_ptr`이 반환값이 필요한 `lock xadd`, `SharedHandle`이 반환값 불필요한 `lock addl`을 사용해 `SharedHandle`이 `37%` 빠르다.
+
+**이동**
+
+```asm
+; shared_ptr 루프 (4 명령어/iter)
+ba70:  movaps %xmm0, (%rsp)        ; 128비트 (ptr_ + ctrl_) 저장
+ba74:  movdqa (%rsp), %xmm0        ; 128비트 로드
+ba79:  mov 0x8(%rsp), %rbp
+ba7e:  sub $0x1, %rax              ; 루프 카운터
+
+; SharedHandle 루프 (9 명령어/iter)
+b3d8:  mov %rbx, 0x10(%rsp)        ; ctrl_ 저장
+b3dd:  movq $0x0, 0x8(%rsp)        ; h.ctrl_ = nullptr
+b3e6:  mov 0x8(%rsp), %rax
+b3eb:  test %rax, %rax
+b3ee:  je b410                     ; nullptr이므로 항상 점프
+b410:  mov 0x10(%rsp), %rbx
+b415:  mov %rbx, 0x8(%rsp)
+b41a:  sub $0x1, %rbp              ; 루프 카운터
+b41e:  jne b3d8
+```
+
+`shared_ptr`은 `ptr_` + `ctrl_` 두 포인터를 128비트 SIMD 한 번으로 처리해 루프당 4 명령어. `SharedHandle`은 포인터가 하나지만 `release()` 안의 `if (!ctrl_)` 분기를 컴파일러가 제거하지 못해 루프당 9 명령어.
+
+**make**
+
+```asm
+; SharedHandle
+b2d0:  mov $0x44, %edi             ; 68 B 할당
+b301:  lock subl $0x1, (%rax)      ; atomic 소멸
+
+; shared_ptr
+b686:  mov $0x50, %edi             ; 80 B 할당
+b6d7:  cmpb $0x0, __libc_single_threaded
+b6de:  jne b670                    ; single-threaded면 non-atomic 경로
+```
+
+`SharedHandle`이 12 B 작은 블록을 할당하지만, 소멸 시 `lock subl`(atomic) vs non-atomic 감소 차이가 할당 크기 이점을 상쇄해 `2 ns` 뒤처진다.
 
 **결론**
 
