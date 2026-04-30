@@ -1,0 +1,3 @@
+add_executable(shandle_v01_test shandle_v01_test.cpp)
+target_link_libraries(shandle_v01_test PRIVATE shandle_v01 GTest::gtest_main)
+add_test(NAME shandle_v01_test COMMAND shandle_v01_test)
