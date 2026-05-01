@@ -3,3 +3,4 @@ target_link_libraries(
     shandle_bench
     PRIVATE shandle_v01 shandle_v02 benchmark::benchmark
 )
+# target_compile_options(shandle_bench PRIVATE -falign-loops=32)

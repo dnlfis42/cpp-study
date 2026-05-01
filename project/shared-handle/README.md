@@ -37,11 +37,10 @@
 
 **개선**: intrusive refcount로 전환. `refcount{1}` adopt 패턴으로 make 오버헤드 제거. C++20 concept으로 타입 제약 강화. 이동·make는 v01과 동등하다.
 
-**트레이드오프**: T가 `IntrusiveBase`를 반드시 상속해야 하는 침투적 설계. 복사는 루프 코드 정렬 차이로 MITE/DSB 디코드 경로가 갈려 v01 대비 `19%` 느리다 (`lock` 이후 L1 load latency가 DSB 경로에서 크리티컬 패스에 노출).
+**트레이드오프**: T가 `IntrusiveBase`를 반드시 상속해야 하는 침투적 설계.
 
 **과제**:
 
 - `__libc_single_threaded` 최적화 미적용
 - 이동 null 분기 잔존
-- 복사: lock 이후 store forwarding 불가 패턴이 DSB 경로에서 L1 load latency 노출
 - weak reference 없음
